@@ -130,9 +130,7 @@ export function dealScore(p: OffMarketRow): DealScore {
     }
   }
 
-  // 7. Loan balance vs assessed value proxy — high default amount on a low value parcel
-  // We don't have assessed_value yet on the API. Use raw default_amount + lien_amount
-  // as a "stack of debt" indicator.
+  // 7. Stacked debt — meaningful even without LTV (signals financial pressure)
   const debt = (p.default_amount ?? 0) + (p.lien_amount ?? 0);
   if (debt >= 25_000) {
     const pts = debt >= 100_000 ? 10 : debt >= 50_000 ? 7 : 4;
@@ -145,9 +143,58 @@ export function dealScore(p: OffMarketRow): DealScore {
     total += pts;
   }
 
-  // 8. Asking price below assessed-proxy — FSBO listing way under typical comps in zip
-  // Skipped until we wire estimated_value. Hook left for later:
-  // if (p.asking_price && p.estimated_value) { ... }
+  // 8. Loan-to-value (LTV) — lower LTV = more equity = bigger room to negotiate.
+  // Underwater (LTV ≥ 1.0) gets 0 because the bank owns the upside, not the seller.
+  const valueRef = p.estimated_value ?? p.assessed_value;
+  if (valueRef && p.loan_balance !== null && p.loan_balance !== undefined && valueRef > 0) {
+    const ltv = p.loan_balance / valueRef;
+    let pts = 0;
+    let label = '';
+    if (ltv <= 0.05) {            // effectively paid off
+      pts = 18;
+      label = 'Owned free & clear';
+    } else if (ltv <= 0.4) {
+      pts = 14;
+      label = `Low LTV ${Math.round(ltv * 100)}%`;
+    } else if (ltv <= 0.65) {
+      pts = 9;
+      label = `Moderate LTV ${Math.round(ltv * 100)}%`;
+    } else if (ltv < 0.85) {
+      pts = 4;
+      label = `High LTV ${Math.round(ltv * 100)}%`;
+    } else if (ltv < 1.0) {
+      pts = 0;
+      label = `Tight LTV ${Math.round(ltv * 100)}%`;
+    } else {
+      pts = -8;                   // underwater — penalize, harder to close
+      label = `Underwater ${Math.round(ltv * 100)}%`;
+    }
+    if (pts !== 0 || label) {
+      breakdown.push({
+        key: 'ltv',
+        label,
+        points: pts,
+        detail: 'loan balance ÷ estimated value',
+      });
+      total += pts;
+    }
+  }
+
+  // 9. Asking price discount vs estimated value (FSBO listed below market)
+  if (p.asking_price && p.estimated_value && p.estimated_value > 0) {
+    const discount = 1 - p.asking_price / p.estimated_value;
+    if (discount > 0.02) {
+      // 30% under market = 18 pts; 10% under = 6 pts; 5% under = 3 pts
+      const pts = Math.min(Math.round(discount * 60), 18);
+      breakdown.push({
+        key: 'asking_discount',
+        label: `Asking ${Math.round(discount * 100)}% below est. value`,
+        points: pts,
+        detail: `$${p.asking_price.toLocaleString()} vs $${p.estimated_value.toLocaleString()} AVM`,
+      });
+      total += pts;
+    }
+  }
 
   // 9. Recency — fresher signals are easier to act on
   if (p.last_seen) {

@@ -22,6 +22,8 @@ export interface OffMarketRow {
   vacancy_months: number | null;
   owner_state: string | null;
   estimated_value: number | null;
+  assessed_value: number | null;
+  loan_balance: number | null;
   estimated_equity: number | null;
   spread_pct: number | null;
   adu_ready: number;

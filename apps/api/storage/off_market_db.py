@@ -73,6 +73,8 @@ CREATE TABLE IF NOT EXISTS off_market_listings (
     vacancy_months     INTEGER,
     owner_state        TEXT,
     estimated_value    INTEGER,
+    assessed_value     INTEGER,
+    loan_balance       INTEGER,
     estimated_equity   INTEGER,
     spread_pct         REAL,
     adu_ready          INTEGER DEFAULT 0,
@@ -115,6 +117,8 @@ CREATE TABLE IF NOT EXISTS off_market_listings (
     vacancy_months     INTEGER,
     owner_state        TEXT,
     estimated_value    BIGINT,
+    assessed_value     BIGINT,
+    loan_balance       BIGINT,
     estimated_equity   BIGINT,
     spread_pct         DOUBLE PRECISION,
     adu_ready          BOOLEAN DEFAULT FALSE,
@@ -122,6 +126,8 @@ CREATE TABLE IF NOT EXISTS off_market_listings (
     first_seen         TIMESTAMPTZ DEFAULT NOW(),
     last_seen          TIMESTAMPTZ DEFAULT NOW()
 );
+ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS assessed_value BIGINT;
+ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS loan_balance   BIGINT;
 CREATE INDEX IF NOT EXISTS idx_off_market_state     ON off_market_listings(state);
 CREATE INDEX IF NOT EXISTS idx_off_market_county    ON off_market_listings(county);
 CREATE INDEX IF NOT EXISTS idx_off_market_last_seen ON off_market_listings(last_seen);
@@ -164,10 +170,21 @@ def _conn():
         conn.row_factory = sqlite3.Row
         try:
             conn.executescript(SQLITE_SCHEMA)
+            _sqlite_migrate(conn)
             yield conn.cursor(), "sqlite"
             conn.commit()
         finally:
             conn.close()
+
+
+def _sqlite_migrate(conn) -> None:
+    """Add columns that may be missing on older DBs. SQLite has no
+    ADD COLUMN IF NOT EXISTS, so check pragma first."""
+    cur = conn.execute("PRAGMA table_info(off_market_listings)")
+    existing = {row[1] for row in cur.fetchall()}
+    for col, decl in [("assessed_value", "INTEGER"), ("loan_balance", "INTEGER")]:
+        if col not in existing:
+            conn.execute(f"ALTER TABLE off_market_listings ADD COLUMN {col} {decl}")
 
 
 def _ph(dialect: str) -> str:
@@ -241,9 +258,10 @@ def upsert(lead: RawLead) -> str | None:
                 source_tags,
                 default_amount, sale_date, asking_price, lien_amount,
                 years_delinquent, vacancy_months, owner_state,
+                estimated_value, assessed_value, loan_balance,
                 first_seen, last_seen
             )
-            VALUES ({", ".join([ph] * 17)})
+            VALUES ({", ".join([ph] * 20)})
             ON CONFLICT (parcel_key) DO UPDATE SET
                 parcel_apn       = COALESCE(EXCLUDED.parcel_apn, off_market_listings.parcel_apn),
                 address          = COALESCE(EXCLUDED.address, off_market_listings.address),
@@ -259,6 +277,9 @@ def upsert(lead: RawLead) -> str | None:
                 years_delinquent = COALESCE(EXCLUDED.years_delinquent, off_market_listings.years_delinquent),
                 vacancy_months   = COALESCE(EXCLUDED.vacancy_months, off_market_listings.vacancy_months),
                 owner_state      = COALESCE(EXCLUDED.owner_state, off_market_listings.owner_state),
+                estimated_value  = COALESCE(EXCLUDED.estimated_value, off_market_listings.estimated_value),
+                assessed_value   = COALESCE(EXCLUDED.assessed_value, off_market_listings.assessed_value),
+                loan_balance     = COALESCE(EXCLUDED.loan_balance, off_market_listings.loan_balance),
                 last_seen        = EXCLUDED.last_seen
             """,
             (
@@ -269,6 +290,7 @@ def upsert(lead: RawLead) -> str | None:
                 sale_date_str,
                 lead.asking_price, lead.lien_amount,
                 lead.years_delinquent, lead.vacancy_duration_months, lead.owner_state,
+                lead.estimated_value, lead.assessed_value, lead.loan_balance,
                 now, now,
             ),
         )

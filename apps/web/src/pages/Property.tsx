@@ -217,6 +217,23 @@ export default function Property() {
               </h3>
               <dl className="mt-3 space-y-2 text-sm">
                 {p.parcel_apn && <Row k="APN" v={p.parcel_apn} mono />}
+                {p.estimated_value && (
+                  <Row k="Est. value (AVM)" v={`$${p.estimated_value.toLocaleString()}`} />
+                )}
+                {p.assessed_value && (
+                  <Row k="Assessed value" v={`$${p.assessed_value.toLocaleString()}`} />
+                )}
+                {p.loan_balance !== null && p.loan_balance !== undefined && (
+                  <Row k="Loan balance" v={`$${p.loan_balance.toLocaleString()}`} />
+                )}
+                {(() => {
+                  const ref = p.estimated_value ?? p.assessed_value;
+                  if (ref && p.loan_balance !== null && p.loan_balance !== undefined && ref > 0) {
+                    const ltv = (p.loan_balance / ref) * 100;
+                    return <Row k="LTV" v={`${ltv.toFixed(0)}%`} />;
+                  }
+                  return null;
+                })()}
                 {p.default_amount !== null && (
                   <Row k="Default amount" v={`$${p.default_amount.toLocaleString()}`} />
                 )}
