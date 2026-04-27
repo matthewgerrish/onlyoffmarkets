@@ -26,8 +26,11 @@ class Settings(BaseSettings):
     # Cache
     redis_url: str = "redis://localhost:6379/0"
 
-    # CORS — Vite dev server + future prod domain
-    allowed_origins: str = "http://localhost:5174,http://localhost:5173"
+    # CORS — local dev + production domain
+    allowed_origins: str = (
+        "http://localhost:5174,http://localhost:5173,"
+        "https://onlyoffmarkets.com,https://www.onlyoffmarkets.com"
+    )
 
     @property
     def origins(self) -> list[str]:
