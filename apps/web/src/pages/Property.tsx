@@ -5,10 +5,11 @@ import {
   Bookmark, Bell, Share2, Hash, Building2,
 } from 'lucide-react';
 import Seo from '../components/Seo';
-import SignalPill from '../components/SignalPill';
+import { DealMeterDetail } from '../components/DealMeter';
 import MapPlaceholder from '../components/MapPlaceholder';
 import { getOffMarket, OffMarketDetailResponse } from '../lib/api';
-import { SOURCE_LABELS, tierFor, ALL_SOURCES } from '../lib/sources';
+import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
+import { dealScore } from '../lib/score';
 
 export default function Property() {
   const { id } = useParams();
@@ -47,7 +48,7 @@ export default function Property() {
     );
   }
 
-  const tier = tierFor(p.source_tags);
+  const score = dealScore(p);
   const knownSources = new Set(ALL_SOURCES);
   const locationStr = [p.city, p.state, p.zip].filter(Boolean).join(', ');
 
@@ -66,7 +67,9 @@ export default function Property() {
           <div className="mt-5 flex items-start justify-between gap-6 flex-wrap">
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <SignalPill tier={tier} />
+                <span className="pill bg-white/15 text-white border border-white/30 uppercase tracking-wider">
+                  {score.band} · {score.total}
+                </span>
                 {p.owner_state && p.owner_state !== p.state && (
                   <span className="pill bg-white/10 text-white/90 border border-white/20">
                     Owner mailing address in {p.owner_state}
@@ -204,6 +207,10 @@ export default function Property() {
           </div>
 
           <aside className="space-y-4">
+            <div className="card p-6">
+              <DealMeterDetail score={score} />
+            </div>
+
             <div className="card p-6">
               <h3 className="text-xs uppercase tracking-wide text-slate-400 font-bold flex items-center gap-1.5">
                 <Building2 className="w-3.5 h-3.5" /> Property details
