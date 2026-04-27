@@ -26,8 +26,15 @@ from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from scrapers.models import RawLead
 from storage.address_matcher import parcel_key, normalize_address
+
+# Load apps/api/.env on import so OFFMARKET_DB_URL is in os.environ
+# regardless of where the entrypoint runs from.
+_API_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(_API_DIR / ".env")
 
 log = logging.getLogger(__name__)
 

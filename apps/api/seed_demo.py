@@ -65,6 +65,11 @@ DEMO_LEADS = [
 
 
 def main() -> None:
+    import os
+    target = os.environ.get("OFFMARKET_DB_URL") or "local SQLite"
+    if target.startswith(("postgres://", "postgresql://")):
+        # Don't print the password
+        target = "Postgres @ " + target.split("@", 1)[-1].split("?", 1)[0]
     n = 0
     for d in DEMO_LEADS:
         lead = RawLead(**d)
@@ -72,7 +77,7 @@ def main() -> None:
         if key:
             n += 1
             print(f"  ✓ {lead.source:20s}  {lead.raw_address}")
-    print(f"\nSeeded {n} demo leads into .data/off_market.sqlite")
+    print(f"\nSeeded {n} demo leads into {target}")
 
 
 if __name__ == "__main__":
