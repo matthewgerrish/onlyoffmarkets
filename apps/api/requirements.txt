@@ -1,0 +1,14 @@
+fastapi>=0.115
+uvicorn[standard]>=0.30
+httpx>=0.28
+pydantic>=2.10
+pydantic-settings>=2.5
+python-dotenv>=1.0
+redis>=5.0
+psycopg[binary]>=3.2
+
+# scrapers
+beautifulsoup4>=4.12
+lxml>=5.3
+pdfplumber>=0.11
+feedparser>=6.0
