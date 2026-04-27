@@ -1,0 +1,10 @@
+.venv/
+.data/
+.scraper_cache/
+__pycache__/
+*.pyc
+.env
+.env.local
+*.sqlite
+*.db
+.DS_Store
