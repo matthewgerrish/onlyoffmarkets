@@ -47,25 +47,31 @@ export default function Mailers() {
       {/* Banner */}
       <div className="relative bg-gradient-to-br from-brand-navy via-brand-700 to-brand-500 text-white">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent_55%)]" />
-        <div className="container-page relative py-10">
-          <div className="flex items-center justify-between gap-6 flex-wrap">
-            <div>
-              <h1 className="font-display text-4xl font-extrabold inline-flex items-center gap-3">
+        <div className="container-page relative py-12">
+          <div className="flex items-start justify-between gap-6 flex-wrap">
+            <div className="max-w-2xl">
+              <h1 className="font-display text-4xl sm:text-5xl font-extrabold inline-flex items-center gap-3">
                 <Mail className="w-8 h-8" /> mailers
               </h1>
-              <p className="mt-2 text-white/80 max-w-2xl">
-                Send postcards to property owners directly from a saved search. Pre-made templates,
-                custom HTML editor, QR codes — dispatched via Lob.
+              <p className="mt-3 text-white/80 text-base sm:text-lg">
+                Send physical postcards to property owners — pre-made templates,
+                custom HTML editor with QR codes, dispatched via Lob.
               </p>
+              <div className="mt-5 flex flex-wrap gap-2">
+                <span className={`pill border ${lobMode === 'mock' ? 'bg-amber-400/15 border-amber-300/30 text-amber-100' : lobMode === 'test' ? 'bg-white/10 border-white/30' : 'bg-emerald-400/20 border-emerald-300/30 text-emerald-100'}`}>
+                  Lob: {lobMode}
+                </span>
+                <span className="pill bg-white/10 border border-white/20 text-white/80">
+                  4×6 from $0.49 / postcard
+                </span>
+                <span className="pill bg-white/10 border border-white/20 text-white/80">
+                  Tracked delivery
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className={`pill border ${lobMode === 'mock' ? 'bg-amber-400/15 border-amber-300/30 text-amber-100' : lobMode === 'test' ? 'bg-white/10 border-white/30' : 'bg-emerald-400/20 border-emerald-300/30 text-emerald-100'}`}>
-                Lob: {lobMode}
-              </span>
-              <Link to="/mailers/new" className="btn-primary">
-                <Plus className="w-4 h-4" /> New template
-              </Link>
-            </div>
+            <Link to="/mailers/new" className="btn-primary shrink-0">
+              <Plus className="w-4 h-4" /> New template
+            </Link>
           </div>
         </div>
       </div>

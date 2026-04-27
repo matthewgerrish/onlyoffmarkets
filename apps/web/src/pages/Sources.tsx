@@ -17,14 +17,20 @@ export default function Sources() {
   return (
     <>
       <Seo title="Data sources" description="What we ingest, how we ingest it, and our compliance posture." />
-      <div className="container-page py-12">
-        <h1 className="font-display text-4xl font-extrabold text-slate-900">data sources</h1>
-        <p className="mt-3 text-slate-600 max-w-2xl">
-          Every signal in OnlyOffMarkets links back to a public-record or opt-in source.
-          We do not scrape MLS data. We honor robots.txt and source terms of service.
-        </p>
 
-        <div className="mt-8 card overflow-x-auto">
+      <div className="relative bg-gradient-to-br from-brand-navy via-brand-700 to-brand-500 text-white">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(255,255,255,0.15),transparent_55%)]" />
+        <div className="container-page relative py-12">
+          <h1 className="font-display text-4xl sm:text-5xl font-extrabold">data sources</h1>
+          <p className="mt-3 text-white/85 max-w-2xl text-lg">
+            Every signal in OnlyOffMarkets links back to a public-record or opt-in source.
+            We do not scrape MLS data. We honor robots.txt and source terms of service.
+          </p>
+        </div>
+      </div>
+
+      <div className="container-page py-10">
+        <div className="card overflow-x-auto">
           <table className="w-full text-sm min-w-[680px]">
             <thead className="bg-slate-50 text-slate-600 text-left">
               <tr>
