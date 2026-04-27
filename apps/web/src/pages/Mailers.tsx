@@ -157,8 +157,8 @@ export default function Mailers() {
               </div>
             )}
             {campaigns && campaigns.length > 0 && (
-              <div className="card overflow-hidden">
-                <table className="w-full text-sm">
+              <div className="card overflow-x-auto">
+                <table className="w-full text-sm min-w-[640px]">
                   <thead className="bg-slate-50 text-slate-500">
                     <tr>
                       <th className="text-left p-3 font-semibold">Campaign</th>

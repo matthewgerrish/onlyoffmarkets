@@ -190,8 +190,8 @@ export default function Pricing() {
             Plan comparison
           </h2>
         </div>
-        <div className="mt-10 card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="mt-10 card overflow-x-auto">
+          <table className="w-full text-sm min-w-[640px]">
             <thead>
               <tr className="border-b border-slate-100">
                 <th className="text-left p-4 font-semibold text-slate-500"> </th>

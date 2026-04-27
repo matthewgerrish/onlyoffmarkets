@@ -24,8 +24,8 @@ export default function Sources() {
           We do not scrape MLS data. We honor robots.txt and source terms of service.
         </p>
 
-        <div className="mt-8 card overflow-hidden">
-          <table className="w-full text-sm">
+        <div className="mt-8 card overflow-x-auto">
+          <table className="w-full text-sm min-w-[680px]">
             <thead className="bg-slate-50 text-slate-600 text-left">
               <tr>
                 <th className="p-4 font-semibold">Source</th>

@@ -91,15 +91,15 @@ export default function Property() {
                 {p.county && <span className="text-white/60">· {p.county} County</span>}
               </div>
             </div>
-            <div className="flex gap-2">
-              <button className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-sm font-semibold transition-colors">
+            <div className="flex gap-2 w-full sm:w-auto">
+              <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-sm font-semibold transition-colors whitespace-nowrap">
                 <Share2 className="w-4 h-4" /> Share
               </button>
-              <button className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-sm font-semibold transition-colors">
+              <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-sm font-semibold transition-colors whitespace-nowrap">
                 <Bookmark className="w-4 h-4" /> Save
               </button>
-              <button className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white text-brand-navy text-sm font-semibold hover:bg-brand-50 transition-colors">
-                <Bell className="w-4 h-4" /> Add to alert
+              <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white text-brand-navy text-sm font-semibold hover:bg-brand-50 transition-colors whitespace-nowrap">
+                <Bell className="w-4 h-4" /> Alert
               </button>
             </div>
           </div>
