@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import settings
 from routes.off_market import router as off_market_router
+from routes.owner import router as owner_router
+from routes.mailers import router as mailers_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,7 +33,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.origins,
     allow_credentials=False,
-    allow_methods=["GET", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
@@ -42,3 +44,5 @@ async def health() -> dict:
 
 
 app.include_router(off_market_router)
+app.include_router(owner_router)
+app.include_router(mailers_router)

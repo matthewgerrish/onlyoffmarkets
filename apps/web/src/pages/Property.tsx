@@ -7,6 +7,7 @@ import {
 import Seo from '../components/Seo';
 import { DealMeterDetail } from '../components/DealMeter';
 import MapPlaceholder from '../components/MapPlaceholder';
+import OwnerContactPanel from '../components/OwnerContactPanel';
 import { getOffMarket, OffMarketDetailResponse } from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore } from '../lib/score';
@@ -257,18 +258,7 @@ export default function Property() {
               </dl>
             </div>
 
-            <div className="card p-6 bg-gradient-to-br from-brand-50 to-white border-brand-100 text-sm text-slate-700">
-              <div className="font-display font-bold text-brand-navy">Owner contact data</div>
-              <p className="mt-1 text-slate-600">
-                Mailing address, phone, and ownership history are available on paid plans.
-              </p>
-              <Link
-                to="/pricing"
-                className="mt-3 btn-primary text-sm w-full justify-center"
-              >
-                View pricing
-              </Link>
-            </div>
+            <OwnerContactPanel parcelKey={p.parcel_key} />
           </aside>
         </div>
       </div>

@@ -7,6 +7,8 @@ import Sources from './pages/Sources';
 import Alerts from './pages/Alerts';
 import Pricing from './pages/Pricing';
 import About from './pages/About';
+import Mailers from './pages/Mailers';
+import MailerEditor from './pages/MailerEditor';
 import NotFound from './pages/NotFound';
 
 export default function App() {
@@ -18,6 +20,8 @@ export default function App() {
         <Route path="property/:id" element={<Property />} />
         <Route path="sources" element={<Sources />} />
         <Route path="alerts" element={<Alerts />} />
+        <Route path="mailers" element={<Mailers />} />
+        <Route path="mailers/new" element={<MailerEditor />} />
         <Route path="pricing" element={<Pricing />} />
         <Route path="about" element={<About />} />
         <Route path="*" element={<NotFound />} />

@@ -1,10 +1,11 @@
 import { Outlet, NavLink, Link } from 'react-router-dom';
-import { Search, Bell, DollarSign, Database, Info } from 'lucide-react';
+import { Search, Bell, DollarSign, Database, Info, Mail } from 'lucide-react';
 import Logo from './Logo';
 
 const nav = [
   { to: '/search', label: 'Search', icon: Search },
   { to: '/alerts', label: 'Alerts', icon: Bell },
+  { to: '/mailers', label: 'Mailers', icon: Mail },
   { to: '/sources', label: 'Sources', icon: Database },
   { to: '/pricing', label: 'Pricing', icon: DollarSign },
   { to: '/about', label: 'About', icon: Info },
