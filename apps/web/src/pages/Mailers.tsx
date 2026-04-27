@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Mail, Plus, Send, Trash2, Loader2, FileText, Megaphone } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Mail, Plus, Send, Trash2, Loader2, FileText, Megaphone, Target, X } from 'lucide-react';
 import Seo from '../components/Seo';
 import PostcardPreview from '../components/PostcardPreview';
 import {
@@ -11,6 +11,8 @@ import {
 type Tab = 'templates' | 'campaigns';
 
 export default function Mailers() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const targetParcel = searchParams.get('parcel');
   const [tab, setTab] = useState<Tab>('templates');
   const [templates, setTemplates] = useState<MailerTemplate[] | null>(null);
   const [campaigns, setCampaigns] = useState<MailerCampaign[] | null>(null);
@@ -69,6 +71,33 @@ export default function Mailers() {
       </div>
 
       <div className="container-page py-8">
+        {targetParcel && (
+          <div className="mb-6 card p-5 bg-gradient-to-r from-brand-50 to-white border-brand-200 flex items-start gap-4">
+            <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 inline-flex items-center justify-center shrink-0">
+              <Target className="w-5 h-5" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="font-display font-bold text-slate-900">Send to one property</div>
+              <p className="text-sm text-slate-600 mt-1">
+                Pick a template below — you'll be sending a single postcard to{' '}
+                <Link to={`/property/${encodeURIComponent(targetParcel)}`} className="text-brand-600 hover:underline font-mono text-xs">
+                  {targetParcel.slice(0, 24)}…
+                </Link>
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                searchParams.delete('parcel');
+                setSearchParams(searchParams);
+              }}
+              className="text-slate-400 hover:text-slate-700 p-2 -m-2"
+              aria-label="Clear target"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Tab switcher */}
         <div className="flex bg-slate-100 rounded-full p-1 text-sm font-semibold w-fit">
           <button
