@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Mail, Plus, Send, Trash2, Loader2, FileText, Megaphone, Target, X } from 'lucide-react';
 import Seo from '../components/Seo';
 import PostcardPreview from '../components/PostcardPreview';
+import SendCampaignModal from '../components/SendCampaignModal';
 import {
   listTemplates, deleteTemplate, listCampaigns,
   MailerTemplate, MailerCampaign,
@@ -18,6 +19,7 @@ export default function Mailers() {
   const [campaigns, setCampaigns] = useState<MailerCampaign[] | null>(null);
   const [lobMode, setLobMode] = useState<string>('mock');
   const [error, setError] = useState<string | null>(null);
+  const [sendingTemplate, setSendingTemplate] = useState<MailerTemplate | null>(null);
 
   const load = () => {
     setError(null);
@@ -156,7 +158,14 @@ export default function Mailers() {
                           <p className="mt-1 text-sm text-slate-500">{t.description}</p>
                         )}
                       </div>
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          onClick={() => setSendingTemplate(t)}
+                          className="btn-primary text-xs"
+                          title="Send a campaign with this template"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Send
+                        </button>
                         {!t.is_preset && (
                           <button
                             onClick={() => onDelete(t.id)}
@@ -230,6 +239,17 @@ export default function Mailers() {
           </div>
         )}
       </div>
+
+      {sendingTemplate && (
+        <SendCampaignModal
+          template={sendingTemplate}
+          fixedParcelKey={targetParcel || undefined}
+          onClose={() => {
+            setSendingTemplate(null);
+            load();
+          }}
+        />
+      )}
     </>
   );
 }
