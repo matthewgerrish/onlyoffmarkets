@@ -6,7 +6,7 @@ import {
 } from 'lucide-react';
 import Seo from '../components/Seo';
 import { DealMeterDetail } from '../components/DealMeter';
-import MapPlaceholder from '../components/MapPlaceholder';
+import ParcelMap from '../components/ParcelMap';
 import OwnerContactPanel from '../components/OwnerContactPanel';
 import { getOffMarket, OffMarketDetailResponse } from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
@@ -176,10 +176,16 @@ export default function Property() {
             <div className="card p-6">
               <h2 className="font-display font-bold text-slate-900">Parcel map</h2>
               <div className="mt-3">
-                <MapPlaceholder label={`Parcel · ${p.county ?? p.city ?? p.state}`} />
+                <ParcelMap
+                  latitude={p.latitude}
+                  longitude={p.longitude}
+                  band={score.band}
+                  score={score.total}
+                  address={`${p.address}, ${p.city || ''} ${p.state} ${p.zip || ''}`.trim()}
+                />
               </div>
               <p className="mt-3 text-xs text-slate-500">
-                Approximate location — click to open in your county GIS viewer once Mapbox is wired up.
+                Pin colored by deal-score band. Tap "Open in Google Maps" to drop into Street View.
               </p>
             </div>
 
