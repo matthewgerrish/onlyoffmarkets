@@ -27,6 +27,7 @@ from scrapers.thurston_nod import ThurstonNODScraper
 from scrapers.thurston_probate import ThurstonProbateScraper
 from scrapers.attom import AttomScraper
 from scrapers.attom_absentee import AttomAbsenteeScraper
+from scrapers.attom_national import AttomNationalScraper
 from scrapers.craigslist_fsbo import CraigslistFSBOScraper
 from scrapers.wholesale_investorlift import WholesaleInvestorLiftScraper
 from scrapers.quality_loan import QualityLoanScraper
@@ -57,7 +58,8 @@ SCRAPERS: dict[str, Type[BaseScraper]] = {
 
     # ---- LICENSED APIs (set API keys to enable) ----
     "attom":           AttomScraper,            # ATTOM foreclosure bundle (national)
-    "attom-absentee":  AttomAbsenteeScraper,    # ATTOM property+sales (absentee)
+    "attom-absentee":  AttomAbsenteeScraper,    # ATTOM property+sales (WA only)
+    "attom-national":  AttomNationalScraper,   # ATTOM property+sales (top-50 metros)
     "wholesale-il":    WholesaleInvestorLiftScraper,  # InvestorLift wholesaler marketplace
 
     # ---- WA COUNTY (free + public) ----
