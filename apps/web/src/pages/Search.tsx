@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { MapPin, Filter, Lock, Loader2, Flame } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { MapPin, Filter, Lock, Loader2, Flame, Send, X } from 'lucide-react';
 import Seo from '../components/Seo';
 import { DealMeter } from '../components/DealMeter';
 import { listOffMarket, OffMarketRow, ApiSource } from '../lib/api';
@@ -18,6 +18,8 @@ export default function Search() {
   const [enabledSources, setEnabledSources] = useState<Set<ApiSource>>(new Set(ALL_SOURCES));
   const [minScore, setMinScore] = useState<number>(0);
   const [sortMode, setSortMode] = useState<SortMode>('score');
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const nav = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -199,12 +201,32 @@ export default function Search() {
             )}
 
             {filtered.map(({ row: p, score }) => (
-              <Link
+              <div
                 key={p.parcel_key}
-                to={`/property/${encodeURIComponent(p.parcel_key)}`}
-                className="card p-5 block hover:border-brand-400 hover:shadow-brand transition-all"
+                className={`card p-5 hover:border-brand-400 hover:shadow-brand transition-all relative ${
+                  selected.has(p.parcel_key) ? 'ring-2 ring-brand-300 border-brand-400' : ''
+                }`}
               >
-                <div className="flex items-start justify-between gap-4">
+                <input
+                  type="checkbox"
+                  checked={selected.has(p.parcel_key)}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    setSelected((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(p.parcel_key)) next.delete(p.parcel_key);
+                      else next.add(p.parcel_key);
+                      return next;
+                    });
+                  }}
+                  className="absolute top-4 right-4 w-4 h-4 accent-brand-500 z-10"
+                  aria-label="Select for bulk action"
+                  onClick={(e) => e.stopPropagation()}
+                />
+                <Link
+                  to={`/property/${encodeURIComponent(p.parcel_key)}`}
+                  className="flex items-start justify-between gap-4 -m-5 p-5"
+                >
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
                       <DealMeter score={score} />
@@ -256,12 +278,38 @@ export default function Search() {
                       <Stat label="Sale date" v={new Date(p.sale_date).toLocaleDateString()} />
                     )}
                   </div>
-                </div>
-              </Link>
+                </Link>
+              </div>
             ))}
           </div>
         </div>
       </div>
+
+      {/* Sticky bulk-action bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-0 inset-x-0 z-30 bg-white/95 backdrop-blur border-t border-slate-200 shadow-lg pb-[env(safe-area-inset-bottom)]">
+          <div className="container-page py-3 flex items-center justify-between gap-3 flex-wrap">
+            <div className="text-sm">
+              <strong className="text-brand-navy">{selected.size}</strong>{' '}
+              <span className="text-slate-600">selected</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setSelected(new Set())} className="btn-outline text-sm">
+                <X className="w-4 h-4" /> Clear
+              </button>
+              <button
+                onClick={() => {
+                  const keys = Array.from(selected).join(',');
+                  nav(`/mailers?parcels=${encodeURIComponent(keys)}`);
+                }}
+                className="btn-primary text-sm"
+              >
+                <Send className="w-4 h-4" /> Send mailer to {selected.size}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

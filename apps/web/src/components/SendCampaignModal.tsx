@@ -8,6 +8,8 @@ interface Props {
   template: MailerTemplate;
   /** If passed, send to that single parcel only and skip the recipient picker */
   fixedParcelKey?: string | null;
+  /** If passed, pre-select these parcels and skip the picker step */
+  prefilledKeys?: string[];
   onClose: () => void;
 }
 
@@ -31,26 +33,28 @@ function loadFrom(): FromAddress {
   return { name: '', address_line1: '', address_city: '', address_state: '', address_zip: '' };
 }
 
-export default function SendCampaignModal({ template, fixedParcelKey, onClose }: Props) {
+export default function SendCampaignModal({ template, fixedParcelKey, prefilledKeys, onClose }: Props) {
   const [from, setFrom] = useState<FromAddress>(loadFrom());
   const [campaignName, setCampaignName] = useState(`${template.name} — ${new Date().toLocaleDateString()}`);
   const [stateFilter, setStateFilter] = useState<string>('');
-  const [maxRecipients, setMaxRecipients] = useState<number>(50);
+  const [maxRecipients, setMaxRecipients] = useState<number>(prefilledKeys?.length ? Math.max(50, prefilledKeys.length) : 50);
   const [pool, setPool] = useState<OffMarketRow[] | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set(fixedParcelKey ? [fixedParcelKey] : []));
-  const [step, setStep] = useState<'pick' | 'confirm' | 'sent' | 'failed'>(fixedParcelKey ? 'confirm' : 'pick');
+  const initialSelected = fixedParcelKey ? [fixedParcelKey] : (prefilledKeys || []);
+  const [selected, setSelected] = useState<Set<string>>(new Set(initialSelected));
+  const skipPick = !!fixedParcelKey || (prefilledKeys && prefilledKeys.length > 0);
+  const [step, setStep] = useState<'pick' | 'confirm' | 'sent' | 'failed'>(skipPick ? 'confirm' : 'pick');
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sent: number; errors: number; status: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Load candidate parcels from the API when not in fixed-parcel mode
+  // Load candidate parcels from the API when picker is active
   useEffect(() => {
-    if (fixedParcelKey) return;
+    if (skipPick) return;
     setPool(null);
     listOffMarket({ state: stateFilter || undefined, limit: 300 })
       .then((d) => setPool(d.results))
       .catch((e: Error) => setError(e.message));
-  }, [stateFilter, fixedParcelKey]);
+  }, [stateFilter, skipPick]);
 
   const filteredPool = useMemo(() => (pool ?? []).slice(0, 200), [pool]);
 
@@ -241,7 +245,7 @@ export default function SendCampaignModal({ template, fixedParcelKey, onClose }:
               )}
 
               <div className="flex justify-between gap-2">
-                {!fixedParcelKey && (
+                {!skipPick && (
                   <button onClick={() => setStep('pick')} className="btn-outline text-sm">
                     Back to recipients
                   </button>

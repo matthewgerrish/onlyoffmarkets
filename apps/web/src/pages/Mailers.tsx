@@ -14,6 +14,7 @@ type Tab = 'templates' | 'campaigns';
 export default function Mailers() {
   const [searchParams, setSearchParams] = useSearchParams();
   const targetParcel = searchParams.get('parcel');
+  const targetParcels = (searchParams.get('parcels') || '').split(',').filter(Boolean);
   const [tab, setTab] = useState<Tab>('templates');
   const [templates, setTemplates] = useState<MailerTemplate[] | null>(null);
   const [campaigns, setCampaigns] = useState<MailerCampaign[] | null>(null);
@@ -79,23 +80,25 @@ export default function Mailers() {
       </div>
 
       <div className="container-page py-8">
-        {targetParcel && (
+        {(targetParcel || targetParcels.length > 0) && (
           <div className="mb-6 card p-5 bg-gradient-to-r from-brand-50 to-white border-brand-200 flex items-start gap-4">
             <div className="w-10 h-10 rounded-full bg-brand-100 text-brand-700 inline-flex items-center justify-center shrink-0">
               <Target className="w-5 h-5" />
             </div>
             <div className="flex-1 min-w-0">
-              <div className="font-display font-bold text-slate-900">Send to one property</div>
+              <div className="font-display font-bold text-slate-900">
+                {targetParcels.length > 0
+                  ? `Send to ${targetParcels.length} selected propert${targetParcels.length === 1 ? 'y' : 'ies'}`
+                  : 'Send to one property'}
+              </div>
               <p className="text-sm text-slate-600 mt-1">
-                Pick a template below — you'll be sending a single postcard to{' '}
-                <Link to={`/property/${encodeURIComponent(targetParcel)}`} className="text-brand-600 hover:underline font-mono text-xs">
-                  {targetParcel.slice(0, 24)}…
-                </Link>
+                Pick a template below to dispatch the campaign.
               </p>
             </div>
             <button
               onClick={() => {
                 searchParams.delete('parcel');
+                searchParams.delete('parcels');
                 setSearchParams(searchParams);
               }}
               className="text-slate-400 hover:text-slate-700 p-2 -m-2"
@@ -244,6 +247,7 @@ export default function Mailers() {
         <SendCampaignModal
           template={sendingTemplate}
           fixedParcelKey={targetParcel || undefined}
+          prefilledKeys={targetParcels.length > 0 ? targetParcels : undefined}
           onClose={() => {
             setSendingTemplate(null);
             load();
