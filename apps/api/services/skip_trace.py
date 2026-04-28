@@ -47,8 +47,13 @@ def _mock_name(seed: str) -> str:
     return f"{first[h % len(first)]} {last[(h // 11) % len(last)]}"
 
 
-def lookup(parcel_key: str, address: str | None = None) -> Dict[str, Any]:
-    """Return owner contact info. Mock unless a provider is configured."""
+def lookup(parcel_key: str, address: str | None = None, known_owner_name: str | None = None) -> Dict[str, Any]:
+    """Return owner contact info.
+
+    If we already know the owner name (from ATTOM during scrape), surface it
+    directly. Phones/emails still require a paid provider; until one is wired,
+    those stay mock so the UI works in dev.
+    """
     if _has_real_provider():
         # TODO: wire provider HTTP call.
         # Each vendor differs: BatchData uses POST /property/skip-trace,
@@ -64,11 +69,19 @@ def lookup(parcel_key: str, address: str | None = None) -> Dict[str, Any]:
     emails: List[Dict[str, str]] = [
         {"address": _mock_email(seed), "confidence": "medium"},
     ]
+    # Real owner name from ATTOM beats the mock name
+    owner_name = known_owner_name or _mock_name(seed)
+    has_real_name = bool(known_owner_name)
     return {
-        "provider": "mock",
-        "owner_name": _mock_name(seed),
+        "provider": "attom" if has_real_name else "mock",
+        "owner_name": owner_name,
         "phones": phones,
         "emails": emails,
         "mailing_address": None,
-        "notes": "Mock data — set BATCHDATA_API_KEY / PROPSTREAM_API_KEY for real lookups.",
+        "notes": (
+            "Owner name from public assessor (ATTOM). Phone + email mocked — "
+            "set BATCHDATA_API_KEY / PROPSTREAM_API_KEY for real contact lookup."
+        ) if has_real_name else (
+            "Mock data — set BATCHDATA_API_KEY / PROPSTREAM_API_KEY for real lookups."
+        ),
     }

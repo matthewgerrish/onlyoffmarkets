@@ -166,6 +166,7 @@ def _maybe_absentee(p: dict) -> RawLead | None:
         state=prop_state or "WA",            # default only if ATTOM omitted it
         zip=prop_addr.get("postal1"),
         owner_state=mail_state,
+        owner_name=owner_name,
         extra={
             "attom_id":     (p.get("identifier") or {}).get("attomId"),
             "prop_addr":    prop_addr.get("oneLine"),

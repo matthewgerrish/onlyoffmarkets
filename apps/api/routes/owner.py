@@ -14,4 +14,8 @@ async def lookup_owner(parcel_key: str) -> dict:
     rec = get_one(parcel_key)
     if not rec:
         raise HTTPException(status_code=404, detail="Property not found")
-    return skip_trace.lookup(parcel_key, rec.get("address"))
+    return skip_trace.lookup(
+        parcel_key,
+        rec.get("address"),
+        known_owner_name=rec.get("owner_name"),
+    )

@@ -56,6 +56,7 @@ class RawLead(BaseModel):
     years_delinquent: int | None = None
     vacancy_duration_months: int | None = None
     owner_state:      str | None = None            # for absentee detection
+    owner_name:       str | None = None            # full owner name from assessor / ATTOM
 
     # Valuation enrichment (ATTOM AVM, county assessor, recorded mortgage)
     estimated_value:  int | None = None            # current market AVM
