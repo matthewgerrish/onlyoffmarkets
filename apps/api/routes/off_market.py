@@ -17,7 +17,7 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Query
 
 from cache import cache
-from storage.off_market_db import query as db_query, get_one
+from storage.off_market_db import query as db_query, get_one, source_counts
 
 log = logging.getLogger(__name__)
 
@@ -50,12 +50,8 @@ async def list_off_market(
         limit=limit,
     )
 
-    # Source counts for the filter UI badges
-    all_rows = db_query(state=state.upper() if state else None, county=county, limit=10_000)
-    counts = {"all": len(all_rows)}
-    for r in all_rows:
-        for tag in r.get("source_tags") or []:
-            counts[tag] = counts.get(tag, 0) + 1
+    # Source counts via single grouped SQL query (was: pull 10k rows + Python loop)
+    counts = source_counts(state=state.upper() if state else None, county=county)
 
     payload = {
         "results": rows,

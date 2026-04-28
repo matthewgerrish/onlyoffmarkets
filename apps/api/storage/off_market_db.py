@@ -344,6 +344,46 @@ def query(
     return out
 
 
+def source_counts(state: str | None = None, county: str | None = None) -> dict:
+    """Return {'all': total, '<source>': n, ...} via a single grouped SQL
+    query — much cheaper than fetching 10k rows and counting in Python."""
+    with _conn() as (cur, dialect):
+        ph = _ph(dialect)
+        clauses = []
+        params: list = []
+        if state:
+            clauses.append(f"state = {ph}")
+            params.append(state)
+        if county:
+            clauses.append(f"county = {ph}")
+            params.append(county)
+        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
+
+        cur.execute(f"SELECT count(*) FROM off_market_listings {where}", tuple(params))
+        total = cur.fetchone()[0]
+
+        if dialect == "pg":
+            sql = f"""
+                SELECT tag, count(*)
+                FROM off_market_listings, jsonb_array_elements_text(source_tags) AS tag
+                {where}
+                GROUP BY tag
+            """
+        else:
+            # SQLite: source_tags is JSON text; use json_each
+            sql = f"""
+                SELECT je.value AS tag, count(*)
+                FROM off_market_listings, json_each(off_market_listings.source_tags) AS je
+                {where}
+                GROUP BY je.value
+            """
+        cur.execute(sql, tuple(params))
+        counts: dict = {"all": total}
+        for tag, n in cur.fetchall():
+            counts[tag] = n
+    return counts
+
+
 def get_one(parcel_key_value: str) -> dict | None:
     """Fetch a canonical record + its raw source log."""
     with _conn() as (cur, dialect):
