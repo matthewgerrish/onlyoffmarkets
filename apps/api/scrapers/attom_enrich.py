@@ -148,12 +148,22 @@ def _maybe_absentee(p: dict) -> RawLead | None:
     apn = (p.get("identifier") or {}).get("apn")
     owner_name = (owner.get("owner1") or {}).get("fullName")
 
+    # Property state — ATTOM uses `countrySubd` for the 2-letter state code
+    prop_state = (prop_addr.get("countrySubd") or "").upper().strip() or None
+    if not prop_state:
+        # Fallback: parse from oneLine ("..., CITY, ST 12345")
+        ones = prop_addr.get("oneLine") or ""
+        sm = re.search(r",\s*([A-Z]{2})\s+\d{5}", ones)
+        if sm:
+            prop_state = sm.group(1)
+
     return RawLead(
         source="vacant",                     # our "vacant/absentee" tab covers both
         source_id=f"attom-absentee-{apn or prop_addr.get('oneLine')}",
         parcel_apn=apn,
         raw_address=prop_addr.get("line1") or prop_addr.get("oneLine"),
         city=prop_addr.get("locality"),
+        state=prop_state or "WA",            # default only if ATTOM omitted it
         zip=prop_addr.get("postal1"),
         owner_state=mail_state,
         extra={
