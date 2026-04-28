@@ -73,3 +73,16 @@ export async function getOffMarket(parcelKey: string): Promise<OffMarketDetailRe
   if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
   return r.json();
 }
+
+export interface CoverageSummary {
+  total_parcels: number;
+  by_source: Record<string, number>;
+  by_state: Record<string, number>;
+  states_covered: number;
+}
+
+export async function getCoverage(): Promise<CoverageSummary> {
+  const r = await fetch(`${API_BASE}/off-market/_/coverage`);
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}

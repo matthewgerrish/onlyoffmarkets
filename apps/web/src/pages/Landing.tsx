@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
   ArrowRight, Radar, MapPin, Bell, Database, ShieldCheck,
@@ -5,8 +6,20 @@ import {
 } from 'lucide-react';
 import Seo from '../components/Seo';
 import HeroMockup from '../components/HeroMockup';
+import { getCoverage, CoverageSummary } from '../lib/api';
+
+function compactNumber(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`.replace('.0k', 'k');
+  return String(n);
+}
 
 export default function Landing() {
+  const [cov, setCov] = useState<CoverageSummary | null>(null);
+  useEffect(() => {
+    getCoverage().then(setCov).catch(() => {});
+  }, []);
+
   return (
     <>
       <Seo
@@ -48,13 +61,13 @@ export default function Landing() {
             </div>
           </div>
 
-          {/* Stats strip */}
+          {/* Stats strip — live from /off-market/_/coverage */}
           <div className="mt-16 lg:mt-20 grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4">
             {[
-              { label: 'Counties tracked', value: '247' },
-              { label: 'Active signals', value: '1.2M' },
-              { label: 'Source feeds', value: '42' },
-              { label: 'Avg lead age', value: '< 18h' },
+              { label: 'Active signals', value: cov ? compactNumber(cov.total_parcels) : '—' },
+              { label: 'States covered', value: cov ? String(cov.states_covered) : '—' },
+              { label: 'Source feeds', value: '19' },
+              { label: 'Avg lead age', value: '< 24h' },
             ].map((s) => (
               <div key={s.label} className="card p-5 hover:shadow-brand transition-shadow">
                 <div className="font-display font-bold text-3xl text-brand-navy">{s.value}</div>

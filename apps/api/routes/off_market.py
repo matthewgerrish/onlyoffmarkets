@@ -65,6 +65,42 @@ async def list_off_market(
     return payload
 
 
+@router.get("/_/coverage")
+async def coverage_summary() -> dict:
+    """Public coverage summary — totals + state breakdown.
+
+    Cheap (single grouped SQL query). No token. Used by the hero stats
+    on the marketing site.
+    """
+    cached = await cache.get_json("off-market:coverage")
+    if cached:
+        return cached
+
+    counts = source_counts()
+    # Per-state breakdown via a separate single-pass query
+    from storage.off_market_db import _conn, _ph
+    with _conn() as (cur, dialect):
+        cur.execute(
+            "SELECT state, count(*) FROM off_market_listings WHERE state IS NOT NULL GROUP BY state ORDER BY count(*) DESC LIMIT 60"
+        )
+        states_rows = cur.fetchall()
+    by_state = {}
+    for row in states_rows:
+        if dialect == "pg":
+            by_state[row[0]] = row[1]
+        else:
+            by_state[row["state"]] = row["count(*)"]
+
+    payload = {
+        "total_parcels":  counts["all"],
+        "by_source":      {k: v for k, v in counts.items() if k != "all"},
+        "by_state":       by_state,
+        "states_covered": len(by_state),
+    }
+    await cache.set_json("off-market:coverage", 600, payload)
+    return payload
+
+
 @router.get("/{parcel_key}")
 async def get_off_market(parcel_key: str) -> dict:
     row = get_one(parcel_key)
