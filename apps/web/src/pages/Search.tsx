@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, Filter, Lock, Loader2, Flame, Send, X, Map as MapIcon, List } from 'lucide-react';
+import { MapPin, Filter, Lock, Loader2, Flame, Send, X, Map as MapIcon, List, Columns } from 'lucide-react';
 import Seo from '../components/Seo';
 import { DealMeter } from '../components/DealMeter';
 import SearchMap from '../components/SearchMap';
@@ -9,7 +9,7 @@ import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore, bandHex, bandTextColor } from '../lib/score';
 
 type SortMode = 'score' | 'newest';
-type ViewMode = 'list' | 'map';
+type ViewMode = 'list' | 'map' | 'split';
 
 export default function Search() {
   const [rows, setRows] = useState<OffMarketRow[] | null>(null);
@@ -21,8 +21,22 @@ export default function Search() {
   const [minScore, setMinScore] = useState<number>(0);
   const [sortMode, setSortMode] = useState<SortMode>('score');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [view, setView] = useState<ViewMode>('list');
+  const [view, setView] = useState<ViewMode>(() =>
+    typeof window !== 'undefined' && window.innerWidth >= 1280 ? 'split' : 'list'
+  );
+  const [hoveredKey, setHoveredKey] = useState<string | null>(null);
   const nav = useNavigate();
+
+  // Scroll the hovered card into view (map → list direction)
+  useEffect(() => {
+    if (!hoveredKey) return;
+    const el = document.querySelector<HTMLElement>(`[data-parcel-key="${CSS.escape(hoveredKey)}"]`);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    if (rect.top < 80 || rect.bottom > window.innerHeight - 40) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [hoveredKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -125,6 +139,15 @@ export default function Search() {
                 <List className="w-3.5 h-3.5" /> List
               </button>
               <button
+                onClick={() => setView('split')}
+                aria-label="Split view"
+                className={`px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 transition-colors hidden xl:inline-flex ${
+                  view === 'split' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <Columns className="w-3.5 h-3.5" /> Split
+              </button>
+              <button
                 onClick={() => setView('map')}
                 aria-label="Map view"
                 className={`px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 transition-colors ${
@@ -203,9 +226,58 @@ export default function Search() {
             </div>
           </aside>
 
-          <div className="space-y-3 min-w-0">
+          <div className={`min-w-0 ${view === 'split' ? 'grid grid-cols-[1fr_1.1fr] gap-4 items-start' : 'space-y-3'}`}>
             {view === 'map' && rows !== null && !error && (
-              <SearchMap rows={filtered.map((f) => f.row)} />
+              <SearchMap
+                rows={filtered.map((f) => f.row)}
+                hoveredKey={hoveredKey}
+                onPinHover={setHoveredKey}
+                onPinClick={(k) => nav(`/property/${encodeURIComponent(k)}`)}
+              />
+            )}
+
+            {view === 'split' && (
+              <>
+                {/* Scrollable list (left) */}
+                <div className="space-y-3 max-h-[calc(100vh-160px)] overflow-y-auto pr-1">
+                  {error && (
+                    <div className="card p-6 text-sm text-rose-600 border-rose-200 bg-rose-50">
+                      Failed to load signals: {error}
+                    </div>
+                  )}
+                  {rows === null && !error && (
+                    <div className="card p-12 flex items-center justify-center text-slate-400">
+                      <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading signals…
+                    </div>
+                  )}
+                  {rows !== null && filtered.length === 0 && !error && (
+                    <div className="card p-12 text-center text-slate-400">
+                      No signals match. Loosen filters.
+                    </div>
+                  )}
+                  {filtered.map(({ row: p, score }) => (
+                    <SplitCard
+                      key={p.parcel_key}
+                      row={p}
+                      score={score}
+                      hoveredKey={hoveredKey}
+                      selected={selected}
+                      setSelected={setSelected}
+                      onHover={setHoveredKey}
+                    />
+                  ))}
+                </div>
+                {/* Sticky map (right) */}
+                <div className="sticky top-20">
+                  <SearchMap
+                    rows={filtered.map((f) => f.row)}
+                    hoveredKey={hoveredKey}
+                    onPinHover={setHoveredKey}
+                    onPinClick={(k) => nav(`/property/${encodeURIComponent(k)}`)}
+                    height="calc(100vh - 160px)"
+                  />
+                </div>
+              </>
             )}
 
             {view === 'list' && error && (
@@ -230,9 +302,11 @@ export default function Search() {
             {view === 'list' && filtered.map(({ row: p, score }) => (
               <div
                 key={p.parcel_key}
+                onMouseEnter={() => setHoveredKey(p.parcel_key)}
+                onMouseLeave={() => setHoveredKey((k) => (k === p.parcel_key ? null : k))}
                 className={`card p-5 hover:border-brand-400 hover:shadow-brand transition-all relative ${
                   selected.has(p.parcel_key) ? 'ring-2 ring-brand-300 border-brand-400' : ''
-                }`}
+                } ${hoveredKey === p.parcel_key ? 'border-brand-500 shadow-brand' : ''}`}
               >
                 <input
                   type="checkbox"
@@ -378,6 +452,76 @@ function ScoreBadge({ total, band }: { total: number; band: 'cold' | 'warming' |
       <div className={`absolute inset-0 flex items-center justify-center font-display font-extrabold text-base ${bandTextColor(band)}`}>
         {total}
       </div>
+    </div>
+  );
+}
+
+/** Compact card used inside the split-view list. Hover-syncs with the map. */
+function SplitCard({
+  row: p,
+  score,
+  hoveredKey,
+  selected,
+  setSelected,
+  onHover,
+}: {
+  row: OffMarketRow;
+  score: ReturnType<typeof dealScore>;
+  hoveredKey: string | null;
+  selected: Set<string>;
+  setSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
+  onHover: (k: string | null) => void;
+}) {
+  const isHovered = hoveredKey === p.parcel_key;
+  return (
+    <div
+      onMouseEnter={() => onHover(p.parcel_key)}
+      onMouseLeave={() => onHover(null)}
+      className={`card p-3 transition-all relative scroll-mt-20 ${
+        selected.has(p.parcel_key) ? 'ring-2 ring-brand-300 border-brand-400' : ''
+      } ${isHovered ? 'border-brand-500 shadow-brand' : 'hover:border-brand-300'}`}
+      data-parcel-key={p.parcel_key}
+    >
+      <input
+        type="checkbox"
+        checked={selected.has(p.parcel_key)}
+        onChange={(e) => {
+          e.stopPropagation();
+          setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.has(p.parcel_key)) next.delete(p.parcel_key);
+            else next.add(p.parcel_key);
+            return next;
+          });
+        }}
+        className="absolute top-3 right-3 w-4 h-4 accent-brand-500 z-10"
+        aria-label="Select for bulk action"
+        onClick={(e) => e.stopPropagation()}
+      />
+      <Link
+        to={`/property/${encodeURIComponent(p.parcel_key)}`}
+        className="flex items-center gap-3"
+      >
+        <div className="shrink-0">
+          <ScoreBadge total={score.total} band={score.band} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className={`pill text-[10px] uppercase tracking-wider ${bandTextColor(score.band)} bg-slate-100 border border-slate-200`}>
+              {score.band}
+            </span>
+            {p.owner_state && p.owner_state !== p.state && (
+              <span className="text-[10px] text-slate-500">owner {p.owner_state}</span>
+            )}
+          </div>
+          <div className="mt-1 font-display font-bold text-sm text-slate-900 truncate">
+            {p.address.replace(/^\d+\s/, '••• ')}
+          </div>
+          <div className="text-[11px] text-slate-500 truncate">
+            {[p.city, p.state, p.zip].filter(Boolean).join(', ')}
+          </div>
+        </div>
+      </Link>
     </div>
   );
 }

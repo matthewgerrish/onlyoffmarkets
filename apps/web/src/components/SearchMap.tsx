@@ -1,23 +1,43 @@
 import { useEffect, useRef, useState } from 'react';
-import mapboxgl, { Map as MapboxMap, Marker, Popup, LngLatBoundsLike } from 'mapbox-gl';
+import mapboxgl, { Map as MapboxMap, LngLatBoundsLike, GeoJSONSource } from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { Link } from 'react-router-dom';
-import { OffMarketRow } from '../lib/api';
+import type { OffMarketRow } from '../lib/api';
 import { dealScore, bandHex } from '../lib/score';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN as string | undefined;
 
 interface Props {
   rows: OffMarketRow[];
-  /** When set, that pin is highlighted + popup opened on mount */
-  focusKey?: string | null;
+  /** Highlights a pin and centers it (used for hover sync from list) */
+  hoveredKey?: string | null;
+  /** Notify parent when user hovers a pin */
+  onPinHover?: (parcelKey: string | null) => void;
+  /** Notify parent when user clicks a pin */
+  onPinClick?: (parcelKey: string) => void;
+  /** Pixel height; defaults to 70vh */
+  height?: string;
 }
 
-export default function SearchMap({ rows, focusKey }: Props) {
+const SOURCE_ID = 'parcels';
+const CLUSTER_LAYER = 'parcel-clusters';
+const CLUSTER_COUNT_LAYER = 'parcel-cluster-count';
+const POINT_LAYER = 'parcel-points';
+const POINT_LABEL_LAYER = 'parcel-points-label';
+const HOVER_LAYER = 'parcel-points-hover';
+
+export default function SearchMap({
+  rows,
+  hoveredKey,
+  onPinHover,
+  onPinClick,
+  height = '70vh',
+}: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
-  const markersRef = useRef<Marker[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [styleReady, setStyleReady] = useState(false);
 
   // Filter rows that have coordinates
   const geoRows = rows.filter(
@@ -35,85 +55,208 @@ export default function SearchMap({ rows, focusKey }: Props) {
     const map = new mapboxgl.Map({
       container: containerRef.current,
       style: 'mapbox://styles/mapbox/light-v11',
-      center: [-98.5795, 39.8283], // geographic centre of contiguous US
+      center: [-98.5795, 39.8283],
       zoom: 3.4,
       attributionControl: false,
+      dragRotate: false,
     });
+    map.touchZoomRotate.disableRotation();
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
-    mapRef.current = map;
 
+    // Geocoder fly-to control — small input top-left
+    map.addControl(
+      new mapboxgl.GeolocateControl({
+        positionOptions: { enableHighAccuracy: false },
+        showUserHeading: false,
+      }),
+      'top-right'
+    );
+
+    map.on('load', () => {
+      // Pre-create empty source/layers; data will be set in the data-effect
+      map.addSource(SOURCE_ID, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+        cluster: true,
+        clusterMaxZoom: 13,
+        clusterRadius: 50,
+      });
+
+      // Cluster bubbles
+      map.addLayer({
+        id: CLUSTER_LAYER,
+        type: 'circle',
+        source: SOURCE_ID,
+        filter: ['has', 'point_count'],
+        paint: {
+          'circle-color': '#1d6cf2',
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-opacity': 0.9,
+          'circle-radius': [
+            'step', ['get', 'point_count'],
+            16,        // ≤ 10
+            10, 22,    // ≤ 50
+            50, 28,    // ≤ 250
+            250, 34,   // > 250
+          ],
+        },
+      });
+      map.addLayer({
+        id: CLUSTER_COUNT_LAYER,
+        type: 'symbol',
+        source: SOURCE_ID,
+        filter: ['has', 'point_count'],
+        layout: {
+          'text-field': ['get', 'point_count_abbreviated'],
+          'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+          'text-size': 12,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      // Single-point pins (data-driven color by deal score band)
+      map.addLayer({
+        id: POINT_LAYER,
+        type: 'circle',
+        source: SOURCE_ID,
+        filter: ['!', ['has', 'point_count']],
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': [
+            'case',
+            ['==', ['get', 'parcel_key'], ['literal', '']], 12,  // never matches; fallback
+            12,
+          ],
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+        },
+      });
+      map.addLayer({
+        id: POINT_LABEL_LAYER,
+        type: 'symbol',
+        source: SOURCE_ID,
+        filter: ['!', ['has', 'point_count']],
+        layout: {
+          'text-field': ['get', 'score'],
+          'text-font': ['DIN Offc Pro Medium', 'Arial Unicode MS Bold'],
+          'text-size': 10,
+          'text-allow-overlap': true,
+        },
+        paint: { 'text-color': '#ffffff' },
+      });
+
+      // Highlighted (hovered) pin — bigger ring underneath
+      map.addLayer({
+        id: HOVER_LAYER,
+        type: 'circle',
+        source: SOURCE_ID,
+        filter: ['==', ['get', 'parcel_key'], ''],
+        paint: {
+          'circle-color': 'rgba(0,0,0,0)',
+          'circle-radius': 22,
+          'circle-stroke-color': '#0f1f3d',
+          'circle-stroke-width': 3,
+        },
+      });
+
+      // Cluster click → zoom in
+      map.on('click', CLUSTER_LAYER, (e) => {
+        const features = map.queryRenderedFeatures(e.point, { layers: [CLUSTER_LAYER] });
+        const clusterId = features[0]?.properties?.cluster_id;
+        const src = map.getSource(SOURCE_ID) as GeoJSONSource;
+        if (clusterId == null) return;
+        src.getClusterExpansionZoom(clusterId, (err, zoom) => {
+          if (err || zoom == null) return;
+          map.easeTo({
+            center: (features[0].geometry as GeoJSON.Point).coordinates as [number, number],
+            zoom,
+            duration: 500,
+          });
+        });
+      });
+
+      // Pin click → notify parent + popup
+      map.on('click', POINT_LAYER, (e) => {
+        const f = e.features?.[0];
+        if (!f) return;
+        const props = f.properties as Record<string, string>;
+        const coords = (f.geometry as GeoJSON.Point).coordinates as [number, number];
+        if (popupRef.current) popupRef.current.remove();
+        popupRef.current = new mapboxgl.Popup({ offset: 14, closeButton: false })
+          .setLngLat(coords)
+          .setHTML(popupHtml(props))
+          .addTo(map);
+        onPinClick?.(props.parcel_key);
+      });
+
+      // Hover styling
+      map.on('mouseenter', POINT_LAYER, (e) => {
+        map.getCanvas().style.cursor = 'pointer';
+        const key = (e.features?.[0]?.properties as any)?.parcel_key as string | undefined;
+        if (key) onPinHover?.(key);
+      });
+      map.on('mouseleave', POINT_LAYER, () => {
+        map.getCanvas().style.cursor = '';
+        onPinHover?.(null);
+      });
+      map.on('mouseenter', CLUSTER_LAYER, () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', CLUSTER_LAYER, () => { map.getCanvas().style.cursor = ''; });
+
+      setStyleReady(true);
+    });
+
+    mapRef.current = map;
     return () => {
       map.remove();
       mapRef.current = null;
+      setStyleReady(false);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Render markers whenever rows change
+  // Push data + fit bounds when rows change
   useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
+    if (!map || !styleReady) return;
+    const src = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
+    if (!src) return;
 
-    // Clear old
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-
-    if (geoRows.length === 0) return;
-
-    const bounds = new mapboxgl.LngLatBounds();
-
-    for (const r of geoRows) {
+    const features: GeoJSON.Feature[] = geoRows.map((r) => {
       const score = dealScore(r);
-      const hex = bandHex(score.band);
+      return {
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [r.longitude!, r.latitude!] },
+        properties: {
+          parcel_key: r.parcel_key,
+          address: r.address,
+          city: r.city || '',
+          state: r.state,
+          zip: r.zip || '',
+          score: String(score.total),
+          color: bandHex(score.band),
+          band: score.band,
+        },
+      };
+    });
+    src.setData({ type: 'FeatureCollection', features });
 
-      const el = document.createElement('div');
-      el.className = 'oom-pin';
-      el.style.cssText = `
-        width: 28px; height: 28px; border-radius: 50%;
-        background: ${hex}; color: #fff;
-        display: flex; align-items: center; justify-content: center;
-        font: 700 11px/1 ui-sans-serif, system-ui, sans-serif;
-        border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25);
-        cursor: pointer;
-        transform: ${r.parcel_key === focusKey ? 'scale(1.25)' : 'scale(1)'};
-      `;
-      el.textContent = String(score.total);
-
-      const popupHtml = `
-        <div style="font-family:ui-sans-serif,system-ui;min-width:180px">
-          <div style="font-size:10px;color:#666;margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">
-            ${score.band} · ${score.total}
-          </div>
-          <div style="font-weight:700;color:#0f1f3d;font-size:13px">
-            ${r.address}
-          </div>
-          <div style="font-size:11px;color:#475569;margin-top:2px">
-            ${[r.city, r.state, r.zip].filter(Boolean).join(', ')}
-          </div>
-          <a href="/property/${encodeURIComponent(r.parcel_key)}"
-             style="display:inline-block;margin-top:8px;font-size:11px;color:#1d6cf2;font-weight:600;text-decoration:none">
-            Open property →
-          </a>
-        </div>`;
-
-      const popup = new Popup({ offset: 18, closeButton: false }).setHTML(popupHtml);
-      const marker = new Marker({ element: el }).setLngLat([r.longitude!, r.latitude!]).setPopup(popup).addTo(map);
-      markersRef.current.push(marker);
-      bounds.extend([r.longitude!, r.latitude!]);
-
-      // Open popup on hover
-      el.addEventListener('mouseenter', () => marker.togglePopup());
-      el.addEventListener('mouseleave', () => marker.togglePopup());
+    if (geoRows.length > 0) {
+      const bounds = new mapboxgl.LngLatBounds();
+      for (const r of geoRows) bounds.extend([r.longitude!, r.latitude!]);
+      if (!bounds.isEmpty()) {
+        map.fitBounds(bounds as LngLatBoundsLike, { padding: 60, maxZoom: 12, duration: 600 });
+      }
     }
+  }, [geoRows, styleReady]);
 
-    if (!bounds.isEmpty()) {
-      map.fitBounds(bounds as LngLatBoundsLike, {
-        padding: 60,
-        maxZoom: 13,
-        duration: 600,
-      });
-    }
-  }, [geoRows, focusKey]);
+  // External hover → update HOVER_LAYER filter
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleReady) return;
+    map.setFilter(HOVER_LAYER, ['==', ['get', 'parcel_key'], hoveredKey || '']);
+  }, [hoveredKey, styleReady]);
 
   if (error) {
     return (
@@ -129,18 +272,15 @@ export default function SearchMap({ rows, focusKey }: Props) {
 
   return (
     <div className="relative">
-      <div ref={containerRef} className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: '70vh', minHeight: 500 }} />
-      {geoRows.length === 0 && rows.length > 0 && (
+      <div
+        ref={containerRef}
+        className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-100"
+        style={{ height, minHeight: 400 }}
+      />
+      {rows.length > 0 && geoRows.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 pointer-events-none">
           <div className="bg-white/90 px-4 py-2 rounded-full shadow border border-slate-200">
-            No coordinates yet — re-run the pipeline to backfill lat/lng.
-          </div>
-        </div>
-      )}
-      {rows.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 pointer-events-none">
-          <div className="bg-white/90 px-4 py-2 rounded-full shadow border border-slate-200">
-            No properties match your filters.
+            No coordinates yet — backfill via pipeline run.
           </div>
         </div>
       )}
@@ -148,5 +288,27 @@ export default function SearchMap({ rows, focusKey }: Props) {
         {geoRows.length} of {rows.length} mapped
       </div>
     </div>
+  );
+}
+
+function popupHtml(p: Record<string, string>): string {
+  const loc = [p.city, p.state, p.zip].filter(Boolean).join(', ');
+  return `
+    <div style="font-family:ui-sans-serif,system-ui;min-width:200px">
+      <div style="font-size:10px;color:#64748b;margin-bottom:2px;text-transform:uppercase;letter-spacing:.05em">
+        ${p.band} · ${p.score}
+      </div>
+      <div style="font-weight:700;color:#0f1f3d;font-size:13px">${escapeHtml(p.address)}</div>
+      <div style="font-size:11px;color:#475569;margin-top:2px">${escapeHtml(loc)}</div>
+      <a href="/property/${encodeURIComponent(p.parcel_key)}"
+         style="display:inline-block;margin-top:8px;font-size:11px;color:#1d6cf2;font-weight:600;text-decoration:none">
+        Open property →
+      </a>
+    </div>`;
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/[&<>"']/g, (c) =>
+    ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] || c)
   );
 }
