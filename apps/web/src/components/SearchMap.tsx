@@ -15,8 +15,14 @@ interface Props {
   onPinHover?: (parcelKey: string | null) => void;
   /** Notify parent when user clicks a pin */
   onPinClick?: (parcelKey: string) => void;
+  /** Notify parent of map viewport bounds [west, south, east, north] */
+  onBoundsChange?: (bounds: [number, number, number, number]) => void;
+  /** Address/zip/city query — fly map to that location when present */
+  flyToQuery?: string;
   /** Pixel height; defaults to 70vh */
   height?: string;
+  /** When true, no rounded border / margin (used for full-bleed layouts) */
+  inset?: boolean;
 }
 
 const SOURCE_ID = 'parcels';
@@ -31,7 +37,10 @@ export default function SearchMap({
   hoveredKey,
   onPinHover,
   onPinClick,
+  onBoundsChange,
+  flyToQuery,
   height = '70vh',
+  inset = false,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MapboxMap | null>(null);
@@ -191,6 +200,17 @@ export default function SearchMap({
         onPinClick?.(props.parcel_key);
       });
 
+      // Emit viewport bounds on move/zoom (debounced via moveend)
+      const emitBounds = () => {
+        if (!onBoundsChange) return;
+        const b = map.getBounds();
+        if (!b) return;
+        onBoundsChange([b.getWest(), b.getSouth(), b.getEast(), b.getNorth()]);
+      };
+      map.on('moveend', emitBounds);
+      // Initial emit once style is loaded
+      emitBounds();
+
       // Hover styling
       map.on('mouseenter', POINT_LAYER, (e) => {
         map.getCanvas().style.cursor = 'pointer';
@@ -258,6 +278,31 @@ export default function SearchMap({
     map.setFilter(HOVER_LAYER, ['==', ['get', 'parcel_key'], hoveredKey || '']);
   }, [hoveredKey, styleReady]);
 
+  // Fly-to via Mapbox geocoder (debounced 400ms)
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !styleReady) return;
+    const q = (flyToQuery || '').trim();
+    if (!q) return;
+    const t = setTimeout(() => {
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(q)}.json?country=us&types=postcode,place,region&limit=1&access_token=${MAPBOX_TOKEN}`;
+      fetch(url)
+        .then((r) => r.json())
+        .then((data) => {
+          const f = data.features?.[0];
+          if (!f) return;
+          const center = f.center as [number, number];
+          if (f.bbox) {
+            map.fitBounds(f.bbox as LngLatBoundsLike, { padding: 60, duration: 600, maxZoom: 12 });
+          } else {
+            map.flyTo({ center, zoom: 12, duration: 600 });
+          }
+        })
+        .catch(() => {});
+    }, 400);
+    return () => clearTimeout(t);
+  }, [flyToQuery, styleReady]);
+
   if (error) {
     return (
       <div className="card p-8 text-sm text-slate-500 text-center">
@@ -271,11 +316,13 @@ export default function SearchMap({
   }
 
   return (
-    <div className="relative">
+    <div className={`relative ${inset ? 'h-full' : ''}`}>
       <div
         ref={containerRef}
-        className="rounded-2xl overflow-hidden border border-slate-200 bg-slate-100"
-        style={{ height, minHeight: 400 }}
+        className={inset
+          ? 'h-full w-full bg-slate-100'
+          : 'rounded-2xl overflow-hidden border border-slate-200 bg-slate-100'}
+        style={inset ? { height: '100%' } : { height, minHeight: 400 }}
       />
       {rows.length > 0 && geoRows.length === 0 && (
         <div className="absolute inset-0 flex items-center justify-center text-sm text-slate-500 pointer-events-none">

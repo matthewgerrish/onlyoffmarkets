@@ -1,15 +1,16 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, Filter, Lock, Loader2, Flame, Send, X, Map as MapIcon, List, Columns } from 'lucide-react';
+import {
+  MapPin, Filter, Lock, Loader2, Flame, Send, X,
+  Search as SearchIcon, ChevronRight,
+} from 'lucide-react';
 import Seo from '../components/Seo';
-import { DealMeter } from '../components/DealMeter';
 import SearchMap from '../components/SearchMap';
 import { listOffMarket, OffMarketRow, ApiSource } from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
-import { dealScore, bandHex, bandTextColor } from '../lib/score';
+import { dealScore, bandHex, bandTextColor, DealScore } from '../lib/score';
 
 type SortMode = 'score' | 'newest';
-type ViewMode = 'list' | 'map' | 'split';
 
 export default function Search() {
   const [rows, setRows] = useState<OffMarketRow[] | null>(null);
@@ -21,22 +22,15 @@ export default function Search() {
   const [minScore, setMinScore] = useState<number>(0);
   const [sortMode, setSortMode] = useState<SortMode>('score');
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [view, setView] = useState<ViewMode>(() =>
-    typeof window !== 'undefined' && window.innerWidth >= 1280 ? 'split' : 'list'
-  );
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
-  const nav = useNavigate();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [addressQuery, setAddressQuery] = useState('');
 
-  // Scroll the hovered card into view (map → list direction)
-  useEffect(() => {
-    if (!hoveredKey) return;
-    const el = document.querySelector<HTMLElement>(`[data-parcel-key="${CSS.escape(hoveredKey)}"]`);
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    if (rect.top < 80 || rect.bottom > window.innerHeight - 40) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    }
-  }, [hoveredKey]);
+  // map bounds (driven by SearchMap onMove)
+  const [bounds, setBounds] = useState<[number, number, number, number] | null>(null);
+  const [filterToBounds, setFilterToBounds] = useState(true);
+
+  const nav = useNavigate();
 
   useEffect(() => {
     let cancelled = false;
@@ -48,20 +42,16 @@ export default function Search() {
         setRows(data.results);
         setCounts(data.counts);
       })
-      .catch((e: Error) => {
-        if (!cancelled) setError(e.message);
-      });
-    return () => {
-      cancelled = true;
-    };
+      .catch((e: Error) => !cancelled && setError(e.message));
+    return () => { cancelled = true; };
   }, [state]);
 
-  // Pre-score every row so we can sort + filter cheaply.
   const scored = useMemo(() => {
     if (!rows) return null;
     return rows.map((r) => ({ row: r, score: dealScore(r) }));
   }, [rows]);
 
+  // Filtered by score + sources (always)
   const filtered = useMemo(() => {
     if (!scored) return [];
     let out = scored.filter(({ row, score }) => {
@@ -69,15 +59,20 @@ export default function Search() {
       if (!row.source_tags.some((t) => enabledSources.has(t))) return false;
       return true;
     });
-    if (sortMode === 'score') {
-      out = [...out].sort((a, b) => b.score.total - a.score.total);
-    } else {
-      out = [...out].sort(
-        (a, b) => new Date(b.row.last_seen).getTime() - new Date(a.row.last_seen).getTime()
-      );
-    }
+    if (sortMode === 'score') out = [...out].sort((a, b) => b.score.total - a.score.total);
+    else out = [...out].sort((a, b) => new Date(b.row.last_seen).getTime() - new Date(a.row.last_seen).getTime());
     return out;
   }, [scored, enabledSources, minScore, sortMode]);
+
+  // Further restrict to map viewport when toggle on
+  const inViewport = useMemo(() => {
+    if (!filterToBounds || !bounds) return filtered;
+    const [w, s, e, n] = bounds;
+    return filtered.filter(({ row }) => {
+      if (typeof row.latitude !== 'number' || typeof row.longitude !== 'number') return false;
+      return row.longitude >= w && row.longitude <= e && row.latitude >= s && row.latitude <= n;
+    });
+  }, [filtered, bounds, filterToBounds]);
 
   const toggleSource = (s: ApiSource) => {
     setEnabledSources((prev) => {
@@ -93,303 +88,183 @@ export default function Search() {
     [rows]
   );
 
+  // Hover scroll into view
+  const listScrollerRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!hoveredKey) return;
+    const el = listScrollerRef.current?.querySelector<HTMLElement>(`[data-parcel-key="${CSS.escape(hoveredKey)}"]`);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const parent = listScrollerRef.current!.getBoundingClientRect();
+    if (rect.top < parent.top || rect.bottom > parent.bottom) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [hoveredKey]);
+
+  const filterChipsActive = (state ? 1 : 0) + (minScore > 0 ? 1 : 0) + (enabledSources.size < ALL_SOURCES.length ? 1 : 0);
+
   return (
     <>
       <Seo title="Search off-market signals" />
-      <div className="container-page py-8">
-        <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div>
-            <h1 className="font-display text-3xl font-extrabold text-brand-navy">signal feed</h1>
-            <p className="text-sm text-slate-500 mt-1">
-              {rows === null
-                ? 'Loading…'
-                : `${filtered.length} of ${rows.length} match — sorted by ${sortMode === 'score' ? 'deal score' : 'newest'}`}
-            </p>
+      <div className="grid lg:grid-cols-[1fr_400px] xl:grid-cols-[1fr_440px] h-[calc(100vh-64px)]">
+        {/* Map column */}
+        <div className="relative bg-slate-100 min-h-[400px]">
+          <SearchMap
+            rows={inViewport.map((f) => f.row)}
+            hoveredKey={hoveredKey}
+            onPinHover={setHoveredKey}
+            onPinClick={(k) => nav(`/property/${encodeURIComponent(k)}`)}
+            onBoundsChange={setBounds}
+            height="100%"
+            flyToQuery={addressQuery}
+            inset
+          />
+
+          {/* Floating address search top-left */}
+          <div className="absolute top-3 left-3 z-10 flex items-center bg-white rounded-full shadow-md border border-slate-200 px-3 py-2 w-[280px] sm:w-[320px]">
+            <SearchIcon className="w-4 h-4 text-slate-400 shrink-0" />
+            <input
+              value={addressQuery}
+              onChange={(e) => setAddressQuery(e.target.value)}
+              placeholder="Search city, ZIP, or state…"
+              className="flex-1 bg-transparent border-0 outline-none text-sm text-slate-900 placeholder:text-slate-400 ml-2"
+            />
+            {addressQuery && (
+              <button
+                onClick={() => setAddressQuery('')}
+                aria-label="Clear search"
+                className="text-slate-400 hover:text-slate-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          <div className="flex items-center gap-3 flex-wrap">
-            <div className="text-xs text-slate-500 inline-flex items-center gap-2 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-full">
-              <Lock className="w-3 h-3" /> Free preview — sign in for full addresses
+
+          {/* Filter chips bar top-center */}
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 hidden md:flex">
+            <button
+              onClick={() => setFiltersOpen(true)}
+              className="bg-white shadow-md border border-slate-200 rounded-full px-3 py-2 text-xs font-semibold text-slate-700 inline-flex items-center gap-2 hover:bg-slate-50"
+            >
+              <Filter className="w-3.5 h-3.5" /> Filters
+              {filterChipsActive > 0 && (
+                <span className="bg-brand-500 text-white text-[10px] rounded-full w-5 h-5 inline-flex items-center justify-center">
+                  {filterChipsActive}
+                </span>
+              )}
+            </button>
+            <label className="bg-white shadow-md border border-slate-200 rounded-full px-3 py-2 text-xs font-semibold text-slate-700 inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={filterToBounds}
+                onChange={(e) => setFilterToBounds(e.target.checked)}
+                className="accent-brand-500"
+              />
+              Filter to map area
+            </label>
+          </div>
+        </div>
+
+        {/* Listings column (right) */}
+        <aside className="bg-white border-l border-slate-100 flex flex-col h-full overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100 flex items-end justify-between gap-3">
+            <div>
+              <h1 className="font-display text-xl font-extrabold text-brand-navy leading-tight">
+                Listings in this area
+              </h1>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {rows === null
+                  ? 'Loading…'
+                  : `${inViewport.length} result${inViewport.length === 1 ? '' : 's'}${
+                      filtered.length !== inViewport.length ? ` of ${filtered.length}` : ''
+                    }`}
+              </p>
             </div>
-            <div className="flex bg-slate-100 rounded-full p-1 text-xs font-semibold">
+            <div className="flex bg-slate-100 rounded-full p-0.5 text-[11px] font-semibold">
               <button
                 onClick={() => setSortMode('score')}
-                className={`px-3 py-1.5 rounded-full transition-colors ${
-                  sortMode === 'score' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                className={`px-2.5 py-1 rounded-full ${
+                  sortMode === 'score' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500'
                 }`}
               >
                 Hottest
               </button>
               <button
                 onClick={() => setSortMode('newest')}
-                className={`px-3 py-1.5 rounded-full transition-colors ${
-                  sortMode === 'newest' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                className={`px-2.5 py-1 rounded-full ${
+                  sortMode === 'newest' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500'
                 }`}
               >
                 Newest
               </button>
             </div>
-            <div className="flex bg-slate-100 rounded-full p-1 text-xs font-semibold">
-              <button
-                onClick={() => setView('list')}
-                aria-label="List view"
-                className={`px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 transition-colors ${
-                  view === 'list' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <List className="w-3.5 h-3.5" /> List
-              </button>
-              <button
-                onClick={() => setView('split')}
-                aria-label="Split view"
-                className={`px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 transition-colors hidden xl:inline-flex ${
-                  view === 'split' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <Columns className="w-3.5 h-3.5" /> Split
-              </button>
-              <button
-                onClick={() => setView('map')}
-                aria-label="Map view"
-                className={`px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 transition-colors ${
-                  view === 'map' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <MapIcon className="w-3.5 h-3.5" /> Map
-              </button>
-            </div>
           </div>
-        </div>
 
-        <div className="mt-6 grid lg:grid-cols-[300px_1fr] gap-6">
-          <aside className="card p-5 h-fit lg:sticky lg:top-20">
-            <div className="flex items-center gap-2 text-sm font-bold text-slate-900 mb-4">
-              <Filter className="w-4 h-4 text-brand-500" /> Filters
-            </div>
-
-            {/* Deal meter slider */}
-            <div className="mb-5 p-3 -mx-1 rounded-xl bg-gradient-to-br from-brand-50 via-white to-orange-50 border border-slate-100">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-600 mb-1.5">
-                <span className="inline-flex items-center gap-1">
-                  <Flame className="w-3.5 h-3.5 text-rose-500" /> Deal meter
-                </span>
-                <span className={`font-mono ${minScore >= 70 ? 'text-rose-600' : minScore >= 50 ? 'text-amber-600' : minScore >= 30 ? 'text-yellow-600' : 'text-brand-600'}`}>
-                  ≥ {minScore}
-                </span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                step={5}
-                value={minScore}
-                onChange={(e) => setMinScore(Number(e.target.value))}
-                className="w-full accent-rose-500"
-                aria-label="Minimum deal score"
-              />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
-                <span>cold</span>
-                <span>warm</span>
-                <span>hot</span>
-                <span>top</span>
-              </div>
-              <p className="mt-2 text-[11px] text-slate-500 leading-snug">
-                0–100 score from preforeclosure status, debt stack, vacancy, absentee owner, sale-date pressure, and more.
-              </p>
-            </div>
-
-            <label className="block text-xs font-medium text-slate-600 mb-1">State</label>
-            <select className="input w-full mb-4" value={state} onChange={(e) => setState(e.target.value)}>
-              <option value="">All states</option>
-              {states.map((s) => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-
-            <div className="text-xs font-medium text-slate-600 mb-2">Sources</div>
-            <div className="flex flex-col gap-2">
-              {ALL_SOURCES.map((s) => (
-                <label key={s} className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer">
-                  <span className="inline-flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={enabledSources.has(s)}
-                      onChange={() => toggleSource(s)}
-                      className="accent-brand-500"
-                    />
-                    {SOURCE_LABELS[s]}
-                  </span>
-                  {counts[s] !== undefined && (
-                    <span className="text-xs text-slate-400 font-mono">{counts[s]}</span>
-                  )}
-                </label>
-              ))}
-            </div>
-          </aside>
-
-          <div className={`min-w-0 ${view === 'split' ? 'grid grid-cols-[1fr_1.1fr] gap-4 items-start' : 'space-y-3'}`}>
-            {view === 'map' && rows !== null && !error && (
-              <SearchMap
-                rows={filtered.map((f) => f.row)}
-                hoveredKey={hoveredKey}
-                onPinHover={setHoveredKey}
-                onPinClick={(k) => nav(`/property/${encodeURIComponent(k)}`)}
-              />
-            )}
-
-            {view === 'split' && (
-              <>
-                {/* Scrollable list (left) */}
-                <div className="space-y-3 max-h-[calc(100vh-160px)] overflow-y-auto pr-1">
-                  {error && (
-                    <div className="card p-6 text-sm text-rose-600 border-rose-200 bg-rose-50">
-                      Failed to load signals: {error}
-                    </div>
-                  )}
-                  {rows === null && !error && (
-                    <div className="card p-12 flex items-center justify-center text-slate-400">
-                      <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading signals…
-                    </div>
-                  )}
-                  {rows !== null && filtered.length === 0 && !error && (
-                    <div className="card p-12 text-center text-slate-400">
-                      No signals match. Loosen filters.
-                    </div>
-                  )}
-                  {filtered.map(({ row: p, score }) => (
-                    <SplitCard
-                      key={p.parcel_key}
-                      row={p}
-                      score={score}
-                      hoveredKey={hoveredKey}
-                      selected={selected}
-                      setSelected={setSelected}
-                      onHover={setHoveredKey}
-                    />
-                  ))}
-                </div>
-                {/* Sticky map (right) */}
-                <div className="sticky top-20">
-                  <SearchMap
-                    rows={filtered.map((f) => f.row)}
-                    hoveredKey={hoveredKey}
-                    onPinHover={setHoveredKey}
-                    onPinClick={(k) => nav(`/property/${encodeURIComponent(k)}`)}
-                    height="calc(100vh - 160px)"
-                  />
-                </div>
-              </>
-            )}
-
-            {view === 'list' && error && (
-              <div className="card p-6 text-sm text-rose-600 border-rose-200 bg-rose-50">
-                Failed to load signals: {error}
-                <div className="mt-2 text-xs text-rose-500">Is the API running on port 8001?</div>
+          <div ref={listScrollerRef} className="flex-1 overflow-y-auto p-3 space-y-2.5">
+            {error && (
+              <div className="card p-4 text-xs text-rose-600 border-rose-200 bg-rose-50">
+                {error}
+                <div className="mt-1 text-rose-500">Is the API up?</div>
               </div>
             )}
-
-            {view === 'list' && rows === null && !error && (
-              <div className="card p-12 flex items-center justify-center text-slate-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading signals…
+            {rows === null && !error && (
+              <div className="card p-10 flex items-center justify-center text-slate-400">
+                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
               </div>
             )}
-
-            {view === 'list' && rows !== null && filtered.length === 0 && !error && (
-              <div className="card p-12 text-center text-slate-400">
-                No signals match. Loosen filters or lower the deal-meter threshold.
+            {rows !== null && inViewport.length === 0 && !error && (
+              <div className="card p-8 text-center text-sm text-slate-500">
+                <MapPin className="w-5 h-5 mx-auto mb-2 text-slate-400" />
+                {filterToBounds
+                  ? 'No properties in current map area. Pan or zoom out.'
+                  : 'No signals match your filters.'}
               </div>
             )}
-
-            {view === 'list' && filtered.map(({ row: p, score }) => (
-              <div
+            {inViewport.map(({ row: p, score }) => (
+              <ListingCard
                 key={p.parcel_key}
-                onMouseEnter={() => setHoveredKey(p.parcel_key)}
-                onMouseLeave={() => setHoveredKey((k) => (k === p.parcel_key ? null : k))}
-                className={`card p-5 hover:border-brand-400 hover:shadow-brand transition-all relative ${
-                  selected.has(p.parcel_key) ? 'ring-2 ring-brand-300 border-brand-400' : ''
-                } ${hoveredKey === p.parcel_key ? 'border-brand-500 shadow-brand' : ''}`}
-              >
-                <input
-                  type="checkbox"
-                  checked={selected.has(p.parcel_key)}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    setSelected((prev) => {
-                      const next = new Set(prev);
-                      if (next.has(p.parcel_key)) next.delete(p.parcel_key);
-                      else next.add(p.parcel_key);
-                      return next;
-                    });
-                  }}
-                  className="absolute top-4 right-4 w-4 h-4 accent-brand-500 z-10"
-                  aria-label="Select for bulk action"
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <Link
-                  to={`/property/${encodeURIComponent(p.parcel_key)}`}
-                  className="flex items-start justify-between gap-4 -m-5 p-5"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <DealMeter score={score} />
-                      <span className={`pill bg-slate-100 ${bandTextColor(score.band)} border border-slate-200 uppercase text-[10px]`}>
-                        {score.band}
-                      </span>
-                      {p.years_delinquent && (
-                        <span className="text-xs font-semibold text-slate-500">
-                          {p.years_delinquent}y delinquent
-                        </span>
-                      )}
-                      {p.owner_state && p.owner_state !== p.state && (
-                        <span className="text-xs font-semibold text-slate-500">
-                          owner in {p.owner_state}
-                        </span>
-                      )}
-                      {p.owner_name && (
-                        <span className="text-xs font-semibold text-slate-500 truncate max-w-[160px]">
-                          {p.owner_name}
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-2 font-display font-bold text-slate-900 truncate">
-                      {p.address.replace(/^\d+\s/, '••• ')}
-                    </div>
-                    <div className="text-sm text-slate-500 inline-flex items-center gap-1">
-                      <MapPin className="w-3 h-3" />{' '}
-                      {[p.city, p.state, p.zip].filter(Boolean).join(', ')}
-                      {p.county && ` · ${p.county} County`}
-                    </div>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {p.source_tags.map((t) => (
-                        <span key={t} className="pill bg-brand-50 text-brand-700 border border-brand-100">
-                          {SOURCE_LABELS[t]}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="text-right shrink-0 text-xs">
-                    {/* Big score circle */}
-                    <div className="mb-3 flex items-center justify-end">
-                      <ScoreBadge total={score.total} band={score.band} />
-                    </div>
-                    {p.default_amount && (
-                      <Stat label="Default" v={`$${p.default_amount.toLocaleString()}`} />
-                    )}
-                    {p.lien_amount && (
-                      <Stat label="Lien" v={`$${p.lien_amount.toLocaleString()}`} />
-                    )}
-                    {p.asking_price && (
-                      <Stat label="Asking" v={`$${p.asking_price.toLocaleString()}`} />
-                    )}
-                    {p.sale_date && (
-                      <Stat label="Sale date" v={new Date(p.sale_date).toLocaleDateString()} />
-                    )}
-                  </div>
-                </Link>
-              </div>
+                row={p}
+                score={score}
+                isHovered={hoveredKey === p.parcel_key}
+                isSelected={selected.has(p.parcel_key)}
+                onHover={setHoveredKey}
+                onToggleSelect={() => {
+                  setSelected((prev) => {
+                    const next = new Set(prev);
+                    if (next.has(p.parcel_key)) next.delete(p.parcel_key);
+                    else next.add(p.parcel_key);
+                    return next;
+                  });
+                }}
+              />
             ))}
           </div>
-        </div>
+
+          <div className="px-4 py-2 border-t border-slate-100 text-[11px] text-slate-500 inline-flex items-center gap-1.5">
+            <Lock className="w-3 h-3" /> Free preview — sign in for full addresses
+          </div>
+        </aside>
       </div>
+
+      {/* Filters drawer */}
+      {filtersOpen && (
+        <FiltersDrawer
+          state={state}
+          setState={setState}
+          minScore={minScore}
+          setMinScore={setMinScore}
+          enabledSources={enabledSources}
+          toggleSource={toggleSource}
+          counts={counts}
+          states={states}
+          onClose={() => setFiltersOpen(false)}
+          onClearAll={() => {
+            setState('');
+            setMinScore(0);
+            setEnabledSources(new Set(ALL_SOURCES));
+          }}
+        />
+      )}
 
       {/* Sticky bulk-action bar */}
       {selected.size > 0 && (
@@ -420,19 +295,83 @@ export default function Search() {
   );
 }
 
-function Stat({ label, v }: { label: string; v: string }) {
+function ListingCard({
+  row: p,
+  score,
+  isHovered,
+  isSelected,
+  onHover,
+  onToggleSelect,
+}: {
+  row: OffMarketRow;
+  score: DealScore;
+  isHovered: boolean;
+  isSelected: boolean;
+  onHover: (k: string | null) => void;
+  onToggleSelect: () => void;
+}) {
   return (
-    <div className="mb-1.5">
-      <div className="text-slate-400">{label}</div>
-      <div className="font-display font-bold text-slate-900 text-sm">{v}</div>
+    <div
+      data-parcel-key={p.parcel_key}
+      onMouseEnter={() => onHover(p.parcel_key)}
+      onMouseLeave={() => onHover(null)}
+      className={`card p-3 transition-all relative scroll-mt-2 cursor-pointer ${
+        isSelected ? 'ring-2 ring-brand-300 border-brand-400' : ''
+      } ${isHovered ? 'border-brand-500 shadow-brand' : 'hover:border-brand-300'}`}
+    >
+      <input
+        type="checkbox"
+        checked={isSelected}
+        onChange={(e) => {
+          e.stopPropagation();
+          onToggleSelect();
+        }}
+        onClick={(e) => e.stopPropagation()}
+        className="absolute top-3 right-3 w-4 h-4 accent-brand-500 z-10"
+        aria-label="Select for bulk action"
+      />
+      <Link to={`/property/${encodeURIComponent(p.parcel_key)}`} className="flex items-center gap-3">
+        <ScoreBadge total={score.total} band={score.band} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span
+              className={`pill text-[10px] uppercase tracking-wider ${bandTextColor(
+                score.band
+              )} bg-slate-100 border border-slate-200`}
+            >
+              {score.band}
+            </span>
+            {p.owner_state && p.owner_state !== p.state && (
+              <span className="text-[10px] text-slate-500">owner {p.owner_state}</span>
+            )}
+            {p.years_delinquent && (
+              <span className="text-[10px] text-slate-500">{p.years_delinquent}y delinq</span>
+            )}
+          </div>
+          <div className="mt-1 font-display font-bold text-sm text-slate-900 truncate">
+            {p.address.replace(/^\d+\s/, '••• ')}
+          </div>
+          <div className="text-[11px] text-slate-500 truncate">
+            {[p.city, p.state, p.zip].filter(Boolean).join(', ')}
+          </div>
+          {(p.default_amount || p.lien_amount || p.asking_price) && (
+            <div className="mt-1 text-[11px] font-semibold text-slate-700">
+              {p.default_amount && <span>Default ${p.default_amount.toLocaleString()}</span>}
+              {p.lien_amount && <span>Lien ${p.lien_amount.toLocaleString()}</span>}
+              {p.asking_price && <span>Asking ${p.asking_price.toLocaleString()}</span>}
+            </div>
+          )}
+        </div>
+        <ChevronRight className="w-4 h-4 text-slate-300 shrink-0" />
+      </Link>
     </div>
   );
 }
 
-function ScoreBadge({ total, band }: { total: number; band: 'cold' | 'warming' | 'warm' | 'hot' | 'top' }) {
+function ScoreBadge({ total, band }: { total: number; band: DealScore['band'] }) {
   const hex = bandHex(band);
   return (
-    <div className="relative w-14 h-14">
+    <div className="relative w-12 h-12 shrink-0">
       <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90">
         <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgb(241,245,249)" strokeWidth="3" />
         <circle
@@ -443,85 +382,127 @@ function ScoreBadge({ total, band }: { total: number; band: 'cold' | 'warming' |
           strokeWidth="3"
           strokeLinecap="round"
           stroke={hex}
-          style={{
-            strokeDasharray: `${(total / 100) * 100} 100`,
-            transition: 'stroke-dasharray 300ms',
-          }}
+          style={{ strokeDasharray: `${total} 100`, transition: 'stroke-dasharray 300ms' }}
         />
       </svg>
-      <div className={`absolute inset-0 flex items-center justify-center font-display font-extrabold text-base ${bandTextColor(band)}`}>
+      <div className={`absolute inset-0 flex items-center justify-center font-display font-extrabold text-sm ${bandTextColor(band)}`}>
         {total}
       </div>
     </div>
   );
 }
 
-/** Compact card used inside the split-view list. Hover-syncs with the map. */
-function SplitCard({
-  row: p,
-  score,
-  hoveredKey,
-  selected,
-  setSelected,
-  onHover,
+/* ---------- Filters drawer (slides in from the right of the listings column) ---------- */
+
+function FiltersDrawer({
+  state,
+  setState,
+  minScore,
+  setMinScore,
+  enabledSources,
+  toggleSource,
+  counts,
+  states,
+  onClose,
+  onClearAll,
 }: {
-  row: OffMarketRow;
-  score: ReturnType<typeof dealScore>;
-  hoveredKey: string | null;
-  selected: Set<string>;
-  setSelected: React.Dispatch<React.SetStateAction<Set<string>>>;
-  onHover: (k: string | null) => void;
+  state: string;
+  setState: (s: string) => void;
+  minScore: number;
+  setMinScore: (n: number) => void;
+  enabledSources: Set<ApiSource>;
+  toggleSource: (s: ApiSource) => void;
+  counts: Record<string, number>;
+  states: string[];
+  onClose: () => void;
+  onClearAll: () => void;
 }) {
-  const isHovered = hoveredKey === p.parcel_key;
   return (
-    <div
-      onMouseEnter={() => onHover(p.parcel_key)}
-      onMouseLeave={() => onHover(null)}
-      className={`card p-3 transition-all relative scroll-mt-20 ${
-        selected.has(p.parcel_key) ? 'ring-2 ring-brand-300 border-brand-400' : ''
-      } ${isHovered ? 'border-brand-500 shadow-brand' : 'hover:border-brand-300'}`}
-      data-parcel-key={p.parcel_key}
-    >
-      <input
-        type="checkbox"
-        checked={selected.has(p.parcel_key)}
-        onChange={(e) => {
-          e.stopPropagation();
-          setSelected((prev) => {
-            const next = new Set(prev);
-            if (next.has(p.parcel_key)) next.delete(p.parcel_key);
-            else next.add(p.parcel_key);
-            return next;
-          });
-        }}
-        className="absolute top-3 right-3 w-4 h-4 accent-brand-500 z-10"
-        aria-label="Select for bulk action"
+    <div className="fixed inset-0 z-40 flex" onClick={onClose}>
+      <div className="flex-1 bg-slate-900/30 backdrop-blur-sm" />
+      <div
         onClick={(e) => e.stopPropagation()}
-      />
-      <Link
-        to={`/property/${encodeURIComponent(p.parcel_key)}`}
-        className="flex items-center gap-3"
+        className="w-full max-w-md bg-white border-l border-slate-200 shadow-2xl h-full overflow-y-auto"
       >
-        <div className="shrink-0">
-          <ScoreBadge total={score.total} band={score.band} />
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-between">
+          <h2 className="font-display font-bold text-slate-900 inline-flex items-center gap-2">
+            <Filter className="w-4 h-4 text-brand-500" /> Filters
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1">
+            <X className="w-5 h-5" />
+          </button>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5 flex-wrap">
-            <span className={`pill text-[10px] uppercase tracking-wider ${bandTextColor(score.band)} bg-slate-100 border border-slate-200`}>
-              {score.band}
-            </span>
-            {p.owner_state && p.owner_state !== p.state && (
-              <span className="text-[10px] text-slate-500">owner {p.owner_state}</span>
-            )}
+
+        <div className="p-5 space-y-5">
+          <div className="p-3 -mx-1 rounded-xl bg-gradient-to-br from-brand-50 via-white to-orange-50 border border-slate-100">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-600 mb-1.5">
+              <span className="inline-flex items-center gap-1">
+                <Flame className="w-3.5 h-3.5 text-rose-500" /> Deal meter
+              </span>
+              <span className={`font-mono ${minScore >= 70 ? 'text-rose-600' : minScore >= 50 ? 'text-amber-600' : minScore >= 30 ? 'text-yellow-600' : 'text-brand-600'}`}>
+                ≥ {minScore}
+              </span>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={5}
+              value={minScore}
+              onChange={(e) => setMinScore(Number(e.target.value))}
+              className="w-full accent-rose-500"
+            />
+            <div className="flex justify-between text-[10px] text-slate-400 mt-1 font-mono">
+              <span>cold</span>
+              <span>warm</span>
+              <span>hot</span>
+              <span>top</span>
+            </div>
           </div>
-          <div className="mt-1 font-display font-bold text-sm text-slate-900 truncate">
-            {p.address.replace(/^\d+\s/, '••• ')}
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1">State</label>
+            <select className="input w-full" value={state} onChange={(e) => setState(e.target.value)}>
+              <option value="">All states</option>
+              {states.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
           </div>
-          <div className="text-[11px] text-slate-500 truncate">
-            {[p.city, p.state, p.zip].filter(Boolean).join(', ')}
+
+          <div>
+            <div className="text-xs font-semibold text-slate-600 mb-2">Sources</div>
+            <div className="flex flex-col gap-2">
+              {ALL_SOURCES.map((s) => (
+                <label
+                  key={s}
+                  className="flex items-center justify-between gap-2 text-sm text-slate-700 cursor-pointer"
+                >
+                  <span className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={enabledSources.has(s)}
+                      onChange={() => toggleSource(s)}
+                      className="accent-brand-500"
+                    />
+                    {SOURCE_LABELS[s]}
+                  </span>
+                  {counts[s] !== undefined && (
+                    <span className="text-xs text-slate-400 font-mono">{counts[s]}</span>
+                  )}
+                </label>
+              ))}
+            </div>
           </div>
         </div>
-      </Link>
+
+        <div className="sticky bottom-0 bg-white border-t border-slate-100 px-5 py-3 flex justify-between gap-2">
+          <button onClick={onClearAll} className="btn-outline text-sm">Clear all</button>
+          <button onClick={onClose} className="btn-primary text-sm">Apply</button>
+        </div>
+      </div>
     </div>
   );
 }
