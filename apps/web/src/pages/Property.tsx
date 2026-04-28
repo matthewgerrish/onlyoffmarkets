@@ -217,6 +217,7 @@ export default function Property() {
                 <Building2 className="w-3.5 h-3.5" /> Property details
               </h3>
               <dl className="mt-3 space-y-2 text-sm">
+                {p.owner_name && <Row k="Owner" v={p.owner_name} />}
                 {p.parcel_apn && <Row k="APN" v={p.parcel_apn} mono />}
                 {p.estimated_value && (
                   <Row k="Est. value (AVM)" v={`$${p.estimated_value.toLocaleString()}`} />
