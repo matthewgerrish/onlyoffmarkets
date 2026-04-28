@@ -148,6 +148,14 @@ def _maybe_absentee(p: dict) -> RawLead | None:
     apn = (p.get("identifier") or {}).get("apn")
     owner_name = (owner.get("owner1") or {}).get("fullName")
 
+    # Lat/lng from ATTOM's location block
+    loc = p.get("location") or {}
+    try:
+        lat = float(loc.get("latitude")) if loc.get("latitude") else None
+        lng = float(loc.get("longitude")) if loc.get("longitude") else None
+    except (TypeError, ValueError):
+        lat = lng = None
+
     # Property state — ATTOM uses `countrySubd` for the 2-letter state code
     prop_state = (prop_addr.get("countrySubd") or "").upper().strip() or None
     if not prop_state:
@@ -167,6 +175,8 @@ def _maybe_absentee(p: dict) -> RawLead | None:
         zip=prop_addr.get("postal1"),
         owner_state=mail_state,
         owner_name=owner_name,
+        latitude=lat,
+        longitude=lng,
         extra={
             "attom_id":     (p.get("identifier") or {}).get("attomId"),
             "prop_addr":    prop_addr.get("oneLine"),

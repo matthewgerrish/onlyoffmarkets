@@ -58,6 +58,10 @@ class RawLead(BaseModel):
     owner_state:      str | None = None            # for absentee detection
     owner_name:       str | None = None            # full owner name from assessor / ATTOM
 
+    # Geo
+    latitude:         float | None = None
+    longitude:        float | None = None
+
     # Valuation enrichment (ATTOM AVM, county assessor, recorded mortgage)
     estimated_value:  int | None = None            # current market AVM
     assessed_value:   int | None = None            # county tax-assessed

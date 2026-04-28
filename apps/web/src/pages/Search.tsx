@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapPin, Filter, Lock, Loader2, Flame, Send, X } from 'lucide-react';
+import { MapPin, Filter, Lock, Loader2, Flame, Send, X, Map as MapIcon, List } from 'lucide-react';
 import Seo from '../components/Seo';
 import { DealMeter } from '../components/DealMeter';
+import SearchMap from '../components/SearchMap';
 import { listOffMarket, OffMarketRow, ApiSource } from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore, bandHex, bandTextColor } from '../lib/score';
 
 type SortMode = 'score' | 'newest';
+type ViewMode = 'list' | 'map';
 
 export default function Search() {
   const [rows, setRows] = useState<OffMarketRow[] | null>(null);
@@ -19,6 +21,7 @@ export default function Search() {
   const [minScore, setMinScore] = useState<number>(0);
   const [sortMode, setSortMode] = useState<SortMode>('score');
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [view, setView] = useState<ViewMode>('list');
   const nav = useNavigate();
 
   useEffect(() => {
@@ -111,6 +114,26 @@ export default function Search() {
                 Newest
               </button>
             </div>
+            <div className="flex bg-slate-100 rounded-full p-1 text-xs font-semibold">
+              <button
+                onClick={() => setView('list')}
+                aria-label="List view"
+                className={`px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 transition-colors ${
+                  view === 'list' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <List className="w-3.5 h-3.5" /> List
+              </button>
+              <button
+                onClick={() => setView('map')}
+                aria-label="Map view"
+                className={`px-3 py-1.5 rounded-full inline-flex items-center gap-1.5 transition-colors ${
+                  view === 'map' ? 'bg-white text-brand-navy shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <MapIcon className="w-3.5 h-3.5" /> Map
+              </button>
+            </div>
           </div>
         </div>
 
@@ -180,27 +203,31 @@ export default function Search() {
             </div>
           </aside>
 
-          <div className="space-y-3">
-            {error && (
+          <div className="space-y-3 min-w-0">
+            {view === 'map' && rows !== null && !error && (
+              <SearchMap rows={filtered.map((f) => f.row)} />
+            )}
+
+            {view === 'list' && error && (
               <div className="card p-6 text-sm text-rose-600 border-rose-200 bg-rose-50">
                 Failed to load signals: {error}
                 <div className="mt-2 text-xs text-rose-500">Is the API running on port 8001?</div>
               </div>
             )}
 
-            {rows === null && !error && (
+            {view === 'list' && rows === null && !error && (
               <div className="card p-12 flex items-center justify-center text-slate-400">
                 <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading signals…
               </div>
             )}
 
-            {rows !== null && filtered.length === 0 && !error && (
+            {view === 'list' && rows !== null && filtered.length === 0 && !error && (
               <div className="card p-12 text-center text-slate-400">
                 No signals match. Loosen filters or lower the deal-meter threshold.
               </div>
             )}
 
-            {filtered.map(({ row: p, score }) => (
+            {view === 'list' && filtered.map(({ row: p, score }) => (
               <div
                 key={p.parcel_key}
                 className={`card p-5 hover:border-brand-400 hover:shadow-brand transition-all relative ${
