@@ -17,6 +17,7 @@ from config import settings
 from routes.off_market import router as off_market_router
 from routes.owner import router as owner_router
 from routes.mailers import router as mailers_router
+from routes.admin import router as admin_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,3 +47,4 @@ async def health() -> dict:
 app.include_router(off_market_router)
 app.include_router(owner_router)
 app.include_router(mailers_router)
+app.include_router(admin_router)

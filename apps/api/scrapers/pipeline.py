@@ -28,8 +28,6 @@ from scrapers.thurston_probate import ThurstonProbateScraper
 from scrapers.attom import AttomScraper
 from scrapers.attom_absentee import AttomAbsenteeScraper
 from scrapers.craigslist_fsbo import CraigslistFSBOScraper
-from scrapers.mls_expired import MLSExpiredCanceledScraper
-from scrapers.motivated_seller import MotivatedSellerScraper
 from scrapers.wholesale_investorlift import WholesaleInvestorLiftScraper
 from scrapers.quality_loan import QualityLoanScraper
 from scrapers.nwts import NWTSScraper
@@ -37,6 +35,11 @@ from scrapers.clear_recon import ClearReconScraper
 from scrapers.pierce_tax import PierceTaxScraper
 from scrapers.king_tax import KingTaxScraper
 from scrapers.thurston_tax import ThurstonTaxScraper
+
+# Nationwide public-source scrapers (no API key required)
+from scrapers.hud_homestore import HudHomestoreScraper
+from scrapers.homepath import HomePathScraper
+from scrapers.auction_com import AuctionComScraper
 
 from storage.off_market_db import upsert
 
@@ -46,24 +49,32 @@ log = logging.getLogger(__name__)
 # Registration order: free + local-source scrapers first, commercial APIs
 # layered on top (they upgrade/dedupe records via shared parcel keys).
 SCRAPERS: dict[str, Type[BaseScraper]] = {
+    # ---- NATIONWIDE (free + public) ----
+    "hud-homestore":   HudHomestoreScraper,    # HUD REO listings
+    "homepath":        HomePathScraper,         # Fannie Mae REO
+    "auction-com":     AuctionComScraper,       # Auction.com search feed
+    "craigslist-fsbo": CraigslistFSBOScraper,  # RSS-based FSBO
+
+    # ---- LICENSED APIs (set API keys to enable) ----
+    "attom":           AttomScraper,            # ATTOM foreclosure bundle (national)
+    "attom-absentee":  AttomAbsenteeScraper,    # ATTOM property+sales (absentee)
+    "wholesale-il":    WholesaleInvestorLiftScraper,  # InvestorLift wholesaler marketplace
+
+    # ---- WA COUNTY (free + public) ----
     "pierce-nod":       PierceNODScraper,
     "pierce-probate":   PierceProbateScraper,
+    "pierce-tax":       PierceTaxScraper,
     "king-nod":         KingNODScraper,
     "king-probate":     KingProbateScraper,
+    "king-tax":         KingTaxScraper,
     "thurston-nod":     ThurstonNODScraper,
     "thurston-probate": ThurstonProbateScraper,
-    "craigslist-fsbo":  CraigslistFSBOScraper,  # RSS-based, free, highest-volume FSBO
-    "trustee-qls":        QualityLoanScraper,    # Quality Loan Service auctions
-    "trustee-nwts":       NWTSScraper,           # Northwest Trustee Services auctions
-    "trustee-clearrecon": ClearReconScraper,     # Clear Recon Corp auctions
-    "pierce-tax":         PierceTaxScraper,      # annual Pierce tax-foreclosure list
-    "king-tax":           KingTaxScraper,        # annual King tax-foreclosure list
-    "thurston-tax":       ThurstonTaxScraper,    # annual Thurston tax-foreclosure list
-    "attom-absentee":   AttomAbsenteeScraper,   # Property+Sales bundle — active today
-    "attom":            AttomScraper,           # Foreclosure bundle — active once added
-    "mls-expired-canceled": MLSExpiredCanceledScraper,  # Trestle status filter (Expired/Withdrawn/Canceled)
-    "motivated-seller":     MotivatedSellerScraper,     # Active listings ≤ tax-assessed, DOM > 30
-    "wholesale-il":         WholesaleInvestorLiftScraper,  # InvestorLift wholesaler marketplace API
+    "thurston-tax":     ThurstonTaxScraper,
+
+    # ---- TRUSTEE / AUCTION SERVICES (national, public sale lists) ----
+    "trustee-qls":        QualityLoanScraper,
+    "trustee-nwts":       NWTSScraper,
+    "trustee-clearrecon": ClearReconScraper,
 }
 
 
