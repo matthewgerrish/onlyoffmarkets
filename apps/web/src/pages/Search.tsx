@@ -243,6 +243,11 @@ export default function Search() {
                           owner in {p.owner_state}
                         </span>
                       )}
+                      {p.owner_name && (
+                        <span className="text-xs font-semibold text-slate-500 truncate max-w-[160px]">
+                          {p.owner_name}
+                        </span>
+                      )}
                     </div>
                     <div className="mt-2 font-display font-bold text-slate-900 truncate">
                       {p.address.replace(/^\d+\s/, '••• ')}
