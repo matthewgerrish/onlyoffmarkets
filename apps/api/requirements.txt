@@ -6,6 +6,7 @@ pydantic-settings>=2.5
 python-dotenv>=1.0
 redis>=5.0
 psycopg[binary]>=3.2
+stripe>=11.0
 
 # scrapers
 beautifulsoup4>=4.12

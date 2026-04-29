@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import { Outlet, NavLink, Link, useLocation } from 'react-router-dom';
-import { Search, Bell, DollarSign, Database, Info, Mail, Menu, X, Coins } from 'lucide-react';
+import { Search, Bell, DollarSign, Database, Info, Mail, Menu, X, Coins, Crown } from 'lucide-react';
 import Logo from './Logo';
 import TokenBadge from './TokenBadge';
+import MembershipBadge from './MembershipBadge';
 
 const nav = [
   { to: '/search', label: 'Search', icon: Search },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/mailers', label: 'Mailers', icon: Mail },
   { to: '/tokens', label: 'Tokens', icon: Coins },
+  { to: '/membership', label: 'Membership', icon: Crown },
   { to: '/sources', label: 'Sources', icon: Database },
   { to: '/pricing', label: 'Pricing', icon: DollarSign },
   { to: '/about', label: 'About', icon: Info },
@@ -48,10 +50,11 @@ export default function Layout() {
           </nav>
 
           <div className="flex items-center gap-2 shrink-0">
+            <span className="hidden md:inline-flex"><MembershipBadge /></span>
             <span className="hidden sm:inline-flex"><TokenBadge /></span>
             <span className="sm:hidden"><TokenBadge compact /></span>
             <Link to="/search" className="btn-ghost text-sm hidden md:inline-flex whitespace-nowrap">Sign in</Link>
-            <Link to="/pricing" className="btn-primary text-sm whitespace-nowrap hidden md:inline-flex">Subscribe</Link>
+            <Link to="/membership" className="btn-primary text-sm whitespace-nowrap hidden md:inline-flex">Subscribe</Link>
             <button
               type="button"
               className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-full text-slate-700 hover:bg-slate-100"

@@ -19,6 +19,7 @@ import {
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore, bandHex, bandTextColor, DealScore } from '../lib/score';
 import { useToast } from '../components/Toast';
+import { useMembership } from '../components/MembershipContext';
 
 type SortMode = 'score' | 'newest';
 
@@ -50,6 +51,7 @@ export default function Search() {
 
   const nav = useNavigate();
   const toast = useToast();
+  const { isPremium } = useMembership();
 
   useEffect(() => {
     let cancelled = false;
@@ -220,6 +222,16 @@ export default function Search() {
               }}
             />
           </div>
+
+          {/* Premium nationwide hint — shown when 2+ states selected by non-Premium */}
+          {!isPremium && selectedStates.length >= 2 && (
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-10 bg-white shadow-md border border-amber-200 rounded-full px-3 py-1.5 text-[11px] inline-flex items-center gap-2 max-w-[90%]">
+              <span className="text-amber-700 font-semibold">Nationwide search is Premium —</span>
+              <Link to="/membership" className="text-brand-600 hover:underline font-semibold whitespace-nowrap">
+                upgrade →
+              </Link>
+            </div>
+          )}
 
           {/* Filter chips bar top-center */}
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-10 flex items-center gap-2 hidden md:flex">

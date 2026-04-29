@@ -11,6 +11,7 @@ import About from './pages/About';
 import Mailers from './pages/Mailers';
 import MailerEditor from './pages/MailerEditor';
 import Tokens from './pages/Tokens';
+import Membership from './pages/Membership';
 import NotFound from './pages/NotFound';
 
 export default function App() {
@@ -27,6 +28,7 @@ export default function App() {
           <Route path="mailers" element={<Mailers />} />
           <Route path="mailers/new" element={<MailerEditor />} />
           <Route path="tokens" element={<Tokens />} />
+          <Route path="membership" element={<Membership />} />
           <Route path="pricing" element={<Pricing />} />
           <Route path="about" element={<About />} />
           <Route path="*" element={<NotFound />} />

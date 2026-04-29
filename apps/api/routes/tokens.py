@@ -1,21 +1,18 @@
-"""Token wallet endpoints.
+"""Token wallet endpoints (read-only).
 
-User identity for the MVP comes from the `X-User-Id` header — the
-frontend stores a UUID in localStorage on first visit. Once real auth
-ships we'll swap this for a JWT-derived id without changing the schema.
-
-Purchases here are MOCK — no Stripe yet. POST /tokens/purchase credits
-the wallet immediately so we can test the spend flow end-to-end. Wire
-real billing by replacing `_mock_charge()` with a Stripe PaymentIntent
-confirmation.
+Purchases now go through `/billing/checkout/tokens` (Stripe Checkout)
+instead of the legacy mock /tokens/purchase. We keep that endpoint
+as a dev-only shortcut when STRIPE_SECRET_KEY is unset.
 """
 from __future__ import annotations
+
+import os
 
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from services import tokens_pricing
-from storage import tokens_db
+from services import memberships, tokens_pricing
+from storage import memberships_db, tokens_db
 
 router = APIRouter(prefix="/tokens", tags=["tokens"])
 
@@ -59,26 +56,40 @@ async def purchase(
     body: PurchaseIn,
     x_user_id: str | None = Header(default=None),
 ) -> dict:
-    """Mock purchase — credits the wallet immediately. Replace with Stripe."""
+    """Dev-only mock purchase. Disabled when STRIPE_SECRET_KEY is set —
+    use `/billing/checkout/tokens` instead."""
+    if os.environ.get("STRIPE_SECRET_KEY"):
+        raise HTTPException(
+            status_code=410,
+            detail="Use /billing/checkout/tokens — mock purchase disabled in production",
+        )
     user_id = _resolve_user_id(x_user_id)
     try:
         pkg = tokens_pricing.get_package(body.package_id)
     except ValueError:
         raise HTTPException(status_code=400, detail="Unknown package")
 
-    # _mock_charge() would call Stripe in production. For now, succeed instantly.
+    plan = memberships_db.get(user_id).get("plan", "free")
+    bonus_pct = memberships.token_bonus_pct(plan)
+    bonus_tokens = pkg["tokens"] * bonus_pct // 100
+    total = pkg["tokens"] + bonus_tokens
+
     new_balance = tokens_db.credit(
         user_id,
-        pkg["tokens"],
+        total,
         kind="purchase",
         package_id=pkg["id"],
-        note=f"Purchased {pkg['label']} pack — ${pkg['price_usd']:.2f}",
+        note=(
+            f"Mock purchase — {pkg['label']} pack"
+            + (f" (+{bonus_tokens} Premium bonus)" if bonus_tokens else "")
+        ),
     )
     return {
         "success": True,
         "package_id": pkg["id"],
-        "tokens_credited": pkg["tokens"],
+        "tokens_credited": total,
+        "bonus_tokens": bonus_tokens,
         "balance": new_balance,
         "billed_usd": pkg["price_usd"],
-        "note": "Mock purchase — wire Stripe to charge the user.",
+        "note": "Mock purchase — wire STRIPE_SECRET_KEY for real Checkout.",
     }

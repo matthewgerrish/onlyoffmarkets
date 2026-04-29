@@ -174,10 +174,13 @@ export default function Pricing() {
                   </li>
                 ))}
               </ul>
-              <button className={`mt-6 ${t.highlight ? 'btn-primary' : 'btn-outline'}`}>
+              <Link
+                to="/membership"
+                className={`mt-6 ${t.highlight ? 'btn-primary' : 'btn-outline'}`}
+              >
                 {t.cta}
                 <ArrowRight className="w-4 h-4" />
-              </button>
+              </Link>
             </div>
           ))}
         </div>

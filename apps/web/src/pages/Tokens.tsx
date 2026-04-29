@@ -1,40 +1,55 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { Coins, Check, Sparkles, Send, History, ArrowRight, Loader2 } from 'lucide-react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Coins, Check, Sparkles, Send, History, ArrowRight, Loader2, Crown } from 'lucide-react';
 import Seo from '../components/Seo';
 import { useTokens } from '../components/TokenContext';
 import { useToast } from '../components/Toast';
+import { useMembership } from '../components/MembershipContext';
 import {
   getPackages,
   getTransactions,
-  purchasePackage,
   PackagesResponse,
   TokenTransaction,
 } from '../lib/tokens';
+import { checkoutTokens } from '../lib/billing';
 
 export default function Tokens() {
   const { summary, refresh, balance } = useTokens();
+  const { isPremium, bonusPct } = useMembership();
   const toast = useToast();
   const [data, setData] = useState<PackagesResponse | null>(null);
   const [tx, setTx] = useState<TokenTransaction[] | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
 
   useEffect(() => {
     getPackages().then(setData).catch(() => {});
     getTransactions(20).then(setTx).catch(() => {});
   }, []);
 
+  // Surface ?status=success / cancelled returning from Stripe
+  useEffect(() => {
+    const status = params.get('status');
+    if (status === 'success') {
+      toast.success('Purchase complete · tokens credited');
+      void refresh();
+      getTransactions(20).then(setTx).catch(() => {});
+      params.delete('status');
+      setParams(params, { replace: true });
+    } else if (status === 'cancelled') {
+      toast.info('Checkout cancelled');
+      params.delete('status');
+      setParams(params, { replace: true });
+    }
+  }, [params, setParams, toast, refresh]);
+
   const onBuy = async (pkgId: string) => {
     setPurchasing(pkgId);
     try {
-      const r = await purchasePackage(pkgId);
-      toast.success(`Added ${r.tokens_credited.toLocaleString()} tokens (mock — wire Stripe to charge)`);
-      await refresh();
-      const txs = await getTransactions(20).catch(() => null);
-      if (txs) setTx(txs);
+      const r = await checkoutTokens(pkgId);
+      window.location.assign(r.url);
     } catch (e) {
-      toast.error((e as Error).message || 'Purchase failed');
-    } finally {
+      toast.error((e as Error).message || 'Checkout failed');
       setPurchasing(null);
     }
   };
@@ -164,6 +179,12 @@ export default function Tokens() {
                 ) : (
                   <div className="mt-1 text-[11px] text-slate-400">Standard rate</div>
                 )}
+                {bonusPct > 0 && (
+                  <div className="mt-1 text-[11px] font-bold text-amber-600 inline-flex items-center gap-1">
+                    <Crown className="w-3 h-3" /> +{Math.floor((p.tokens * bonusPct) / 100)} bonus
+                    tokens (Premium)
+                  </div>
+                )}
                 <button
                   className={`mt-5 ${isPopular ? 'btn-primary' : 'btn-outline'} w-full justify-center`}
                   disabled={purchasing !== null}
@@ -269,6 +290,25 @@ export default function Tokens() {
           </div>
         )}
       </section>
+
+      {!isPremium && (
+        <section className="container-page pb-12">
+          <div className="card p-6 bg-gradient-to-br from-amber-50 via-white to-amber-50 border-amber-200 flex items-center justify-between gap-4 flex-wrap">
+            <div>
+              <div className="font-display font-bold text-brand-navy inline-flex items-center gap-2">
+                <Crown className="w-4 h-4 text-amber-500" /> Premium adds 5% to every pack.
+              </div>
+              <p className="text-sm text-slate-600 mt-1 max-w-xl">
+                100 → 105 tokens. 500 → 525. 2000 → 2100. Plus 25 free Standard
+                lookups every month, nationwide search, and bulk skip-trace.
+              </p>
+            </div>
+            <Link to="/membership" className="btn-primary">
+              Go Premium · $29.95/mo <ArrowRight className="w-4 h-4" />
+            </Link>
+          </div>
+        </section>
+      )}
 
       <section className="container-page pb-16">
         <div className="card p-6 bg-gradient-to-br from-brand-50 via-white to-amber-50 flex items-center justify-between gap-4 flex-wrap">
