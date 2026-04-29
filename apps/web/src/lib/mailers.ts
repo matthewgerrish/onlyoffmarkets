@@ -1,4 +1,51 @@
+import { apiHeaders } from './tokens';
+
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8001';
+
+export interface TokensFooter {
+  spent: number;
+  refunded?: number;
+  per_unit?: number;
+  balance: number | null;
+  action?: string;
+}
+
+export interface InsufficientTokensError {
+  insufficient: true;
+  required: number;
+  balance: number;
+  action: string;
+}
+
+function parseInsufficient(detail: unknown): InsufficientTokensError | null {
+  if (typeof detail !== 'object' || !detail) return null;
+  const d = detail as Record<string, unknown>;
+  if (d.error === 'insufficient_tokens') {
+    return {
+      insufficient: true,
+      required: Number(d.required) || 0,
+      balance: Number(d.balance) || 0,
+      action: String(d.action || ''),
+    };
+  }
+  return null;
+}
+
+async function fetchOrInsufficient<T>(input: string, init?: RequestInit): Promise<T> {
+  const r = await fetch(input, init);
+  if (r.status === 402) {
+    let body: unknown = null;
+    try {
+      body = await r.json();
+    } catch {
+      /* ignore */
+    }
+    const err = parseInsufficient((body as { detail?: unknown })?.detail);
+    if (err) throw err;
+  }
+  if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
+  return r.json();
+}
 
 export interface MailerTemplate {
   id: string;
@@ -54,17 +101,17 @@ export interface OwnerContact {
     markup_pct: number;
     billed: boolean;
   };
+  tokens?: TokensFooter;
 }
 
 export async function lookupOwner(
   parcelKey: string,
   tier: SkipTraceTier = 'standard',
 ): Promise<OwnerContact> {
-  const r = await fetch(
+  return fetchOrInsufficient<OwnerContact>(
     `${API_BASE}/owner/${encodeURIComponent(parcelKey)}?tier=${tier}`,
+    { headers: apiHeaders() },
   );
-  if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
-  return r.json();
 }
 
 export async function getSkipTracePricing(): Promise<{ tiers: SkipTraceTierInfo[] }> {
@@ -121,12 +168,15 @@ export async function sendCampaign(payload: CampaignPayload): Promise<{
   error_count: number;
   lob_postcard_ids: string[];
   lob_mode: string;
+  tokens?: TokensFooter;
 }> {
-  const r = await fetch(`${API_BASE}/mailers/campaigns`, {
+  return fetchOrInsufficient(`${API_BASE}/mailers/campaigns`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: apiHeaders({ 'content-type': 'application/json' }),
     body: JSON.stringify(payload),
   });
-  if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
-  return r.json();
+}
+
+export function isInsufficientTokens(e: unknown): e is InsufficientTokensError {
+  return Boolean(e) && typeof e === 'object' && (e as InsufficientTokensError).insufficient === true;
 }

@@ -14,10 +14,12 @@ from pathlib import Path
 from typing import List, Optional
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from services.lob_client import lob_client
+from services import tokens_pricing
+from storage import tokens_db
 from storage.off_market_db import _conn, _ph, get_one, _resolve_url, _is_postgres
 
 log = logging.getLogger(__name__)
@@ -348,7 +350,10 @@ async def list_campaigns() -> dict:
 
 
 @router.post("/campaigns")
-async def send_campaign(c: CampaignIn) -> dict:
+async def send_campaign(
+    c: CampaignIn,
+    x_user_id: str | None = Header(default=None),
+) -> dict:
     """Create + immediately send a postcard campaign through Lob.
 
     Each recipient must have a known mailing address. For the demo we
@@ -359,6 +364,32 @@ async def send_campaign(c: CampaignIn) -> dict:
 
     if not c.parcel_keys:
         raise HTTPException(status_code=400, detail="No recipients selected")
+
+    # Pre-charge token cost for the whole batch.
+    user_id = (x_user_id or "").strip()[:64]
+    per_postcard = tokens_pricing.cost_tokens("mailer_postcard")
+    total_cost = per_postcard * len(c.parcel_keys)
+    debited_total = 0
+    if user_id:
+        ok, bal = tokens_db.debit(
+            user_id,
+            total_cost,
+            action_key="mailer_postcard",
+            note=f"Campaign {c.name} — {len(c.parcel_keys)} postcards",
+        )
+        if not ok:
+            raise HTTPException(
+                status_code=402,
+                detail={
+                    "error": "insufficient_tokens",
+                    "required": total_cost,
+                    "balance": bal,
+                    "action": "mailer_postcard",
+                    "per_unit": per_postcard,
+                    "recipients": len(c.parcel_keys),
+                },
+            )
+        debited_total = total_cost
 
     # Resolve template HTML (either from id or inline)
     front_html = c.front_html
@@ -442,6 +473,18 @@ async def send_campaign(c: CampaignIn) -> dict:
             ),
         )
 
+    # Refund tokens for postcards that failed to dispatch.
+    refunded = 0
+    if user_id and debited_total and errors:
+        refund_amount = errors * per_postcard
+        tokens_db.refund(
+            user_id,
+            refund_amount,
+            action_key="mailer_postcard",
+            note=f"Campaign {c.name} — refund {errors} failed postcards",
+        )
+        refunded = refund_amount
+
     return {
         "id": cid,
         "status": status_str,
@@ -449,4 +492,10 @@ async def send_campaign(c: CampaignIn) -> dict:
         "error_count": errors,
         "lob_postcard_ids": sent_ids,
         "lob_mode": lob_client.mode,
+        "tokens": {
+            "spent": debited_total - refunded,
+            "refunded": refunded,
+            "per_unit": per_postcard,
+            "balance": tokens_db.balance(user_id) if user_id else None,
+        },
     }

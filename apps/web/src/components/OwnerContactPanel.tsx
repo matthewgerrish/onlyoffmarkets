@@ -1,36 +1,57 @@
 import { useEffect, useState } from 'react';
-import { Phone, Mail as MailIcon, Loader2, Sparkles, Send, Crown, Zap, Check } from 'lucide-react';
+import {
+  Phone,
+  Mail as MailIcon,
+  Loader2,
+  Sparkles,
+  Send,
+  Crown,
+  Zap,
+  Check,
+  Coins,
+} from 'lucide-react';
 import {
   lookupOwner,
   getSkipTracePricing,
+  isInsufficientTokens,
   OwnerContact,
   SkipTraceTier,
   SkipTraceTierInfo,
 } from '../lib/mailers';
+import { ACTION_TOKEN_COST } from '../lib/tokens';
 import { Link } from 'react-router-dom';
 import { useToast } from './Toast';
+import { useTokens } from './TokenContext';
+import InsufficientTokensModal from './InsufficientTokensModal';
 
-/** Owner contact card with tier picker (Standard / Pro) + skip-trace lookup. */
+interface Insufficient {
+  required: number;
+  balance: number;
+  action: string;
+}
+
+/** Owner contact card with tier picker (Standard / Pro) — priced in tokens. */
 export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) {
   const [contact, setContact] = useState<OwnerContact | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tier, setTier] = useState<SkipTraceTier>('standard');
   const [tiers, setTiers] = useState<SkipTraceTierInfo[] | null>(null);
+  const [insufficient, setInsufficient] = useState<Insufficient | null>(null);
   const toast = useToast();
+  const { balance, setBalance, refresh } = useTokens();
 
   useEffect(() => {
     getSkipTracePricing()
       .then((d) => setTiers(d.tiers))
       .catch(() => {
-        // fallback to hardcoded so UI still works if API is unreachable
         setTiers([
           {
             tier: 'standard',
             label: 'Standard',
             provider_label: 'BatchData',
-            advertised_usd: 0.12,
-            markup_pct: 20,
+            advertised_usd: 0.2,
+            markup_pct: 100,
             match_rate_pct: 70,
             description: '~70% match rate. Best ROI for solo investors.',
           },
@@ -47,22 +68,25 @@ export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) 
       });
   }, []);
 
+  const tokenCost = ACTION_TOKEN_COST[`skip_trace_${tier}`] ?? (tier === 'pro' ? 3 : 1);
+  const cantAfford = balance < tokenCost;
+
   const onLookup = async () => {
     setLoading(true);
     setError(null);
     try {
       const c = await lookupOwner(parcelKey, tier);
       setContact(c);
-      const price = c.billing?.advertised_usd ?? 0;
-      const billed = c.billing?.billed;
-      toast.success(
-        billed
-          ? `Owner contact found · $${price.toFixed(2)} billed`
-          : 'Owner contact resolved (demo data — no charge)',
-      );
+      if (typeof c.tokens?.balance === 'number') setBalance(c.tokens.balance);
+      toast.success(`Owner contact found · ${c.tokens?.spent ?? tokenCost} token(s) spent`);
     } catch (e) {
-      setError((e as Error).message);
-      toast.error('Owner lookup failed');
+      if (isInsufficientTokens(e)) {
+        setInsufficient({ required: e.required, balance: e.balance, action: e.action });
+        setBalance(e.balance);
+      } else {
+        setError((e as Error).message);
+        toast.error('Owner lookup failed');
+      }
     } finally {
       setLoading(false);
     }
@@ -85,12 +109,12 @@ export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) 
 
       {!contact && !loading && (
         <>
-          {/* Tier picker */}
           {tiers && (
             <div className="mt-4 grid grid-cols-2 gap-2">
               {tiers.map((t) => {
                 const isActive = t.tier === tier;
                 const Icon = t.tier === 'pro' ? Crown : Zap;
+                const cost = ACTION_TOKEN_COST[`skip_trace_${t.tier}`] ?? (t.tier === 'pro' ? 3 : 1);
                 return (
                   <button
                     key={t.tier}
@@ -114,10 +138,12 @@ export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) 
                       {isActive && <Check className="w-3.5 h-3.5 text-brand-500" />}
                     </div>
                     <div className="mt-1.5 flex items-baseline gap-1">
-                      <span className="font-display font-extrabold text-brand-navy text-lg leading-none">
-                        ${t.advertised_usd.toFixed(2)}
+                      <span className="font-display font-extrabold text-brand-navy text-lg leading-none inline-flex items-center gap-1">
+                        <Coins className="w-3.5 h-3.5 text-amber-500" /> {cost}
                       </span>
-                      <span className="text-[10px] text-slate-500">/lookup</span>
+                      <span className="text-[10px] text-slate-500">
+                        token{cost === 1 ? '' : 's'}
+                      </span>
                     </div>
                     <div className="mt-1 text-[10px] text-slate-500">
                       {t.match_rate_pct}% match · {t.provider_label}
@@ -129,24 +155,35 @@ export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) 
           )}
 
           {selected && (
-            <p className="mt-3 text-xs text-slate-500 leading-relaxed">
-              {selected.description}{' '}
-              <span className="text-slate-400">
-                Includes a {selected.markup_pct}% platform fee.
-              </span>
-            </p>
+            <p className="mt-3 text-xs text-slate-500 leading-relaxed">{selected.description}</p>
           )}
 
-          <button onClick={onLookup} className="mt-4 btn-primary w-full justify-center">
-            <Sparkles className="w-4 h-4" />
-            Lookup owner · ${selected?.advertised_usd.toFixed(2) ?? '0.12'}
-          </button>
-          <Link
-            to="/pricing"
-            className="mt-2 block text-xs text-slate-500 hover:text-brand-600 text-center"
+          <button
+            onClick={onLookup}
+            className="mt-4 btn-primary w-full justify-center disabled:opacity-60"
+            disabled={cantAfford && balance > 0 ? false : false}
+            // we don't disable — we let server respond w/ 402 and surface the modal,
+            // but show a hint when we already know we're short
           >
-            Free preview · upgrade for unlimited lookups
-          </Link>
+            <Sparkles className="w-4 h-4" />
+            Lookup · {tokenCost} token{tokenCost === 1 ? '' : 's'}
+          </button>
+
+          {cantAfford ? (
+            <Link
+              to="/tokens"
+              className="mt-2 block text-xs text-rose-500 hover:text-rose-700 text-center font-semibold"
+            >
+              Balance {balance} — buy more tokens →
+            </Link>
+          ) : (
+            <Link
+              to="/tokens"
+              className="mt-2 block text-xs text-slate-500 hover:text-brand-600 text-center"
+            >
+              Balance: {balance} tokens · history →
+            </Link>
+          )}
         </>
       )}
 
@@ -163,20 +200,14 @@ export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) 
         <div className="mt-4 space-y-3 animate-fade-in-up">
           {contact.owner_name && (
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">
-                Owner
-              </div>
-              <div className="font-display font-bold text-slate-900">
-                {contact.owner_name}
-              </div>
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Owner</div>
+              <div className="font-display font-bold text-slate-900">{contact.owner_name}</div>
             </div>
           )}
 
           {contact.phones.length > 0 && (
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">
-                Phones
-              </div>
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Phones</div>
               <ul className="mt-1 space-y-1">
                 {contact.phones.map((p, i) => (
                   <li
@@ -201,9 +232,7 @@ export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) 
 
           {contact.emails.length > 0 && (
             <div>
-              <div className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">
-                Emails
-              </div>
+              <div className="text-[11px] uppercase tracking-wider text-slate-400 font-bold">Emails</div>
               <ul className="mt-1 space-y-1">
                 {contact.emails.map((e, i) => (
                   <li
@@ -235,14 +264,15 @@ export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) 
             </div>
           )}
 
-          {contact.billing && (
+          {contact.tokens && (
             <div className="text-[10px] font-mono text-slate-500 bg-white/70 border border-slate-100 rounded-lg px-2.5 py-1.5 inline-flex items-center gap-2">
+              <Coins className="w-3 h-3 text-amber-500" />
               <span className="text-slate-700 font-semibold">
-                {contact.billing.billed
-                  ? `$${contact.billing.advertised_usd.toFixed(2)} · ${contact.tier_label}`
-                  : 'Demo · no charge'}
+                {contact.tokens.spent} token{contact.tokens.spent === 1 ? '' : 's'} spent
               </span>
-              <span>via {contact.billing.provider_label}</span>
+              {typeof contact.tokens.balance === 'number' && (
+                <span>· {contact.tokens.balance} left</span>
+              )}
             </div>
           )}
 
@@ -257,6 +287,18 @@ export default function OwnerContactPanel({ parcelKey }: { parcelKey: string }) 
             <Send className="w-4 h-4" /> Send mailer
           </Link>
         </div>
+      )}
+
+      {insufficient && (
+        <InsufficientTokensModal
+          required={insufficient.required}
+          balance={insufficient.balance}
+          action={insufficient.action}
+          onClose={() => {
+            setInsufficient(null);
+            void refresh();
+          }}
+        />
       )}
     </div>
   );

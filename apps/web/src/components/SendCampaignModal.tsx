@@ -3,7 +3,11 @@ import { Send, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { sendCampaign } from '../lib/mailers';
 import type { MailerTemplate } from '../lib/mailers';
 import { listOffMarket, OffMarketRow } from '../lib/api';
+import { isInsufficientTokens } from '../lib/mailers';
+import { ACTION_TOKEN_COST } from '../lib/tokens';
 import { useToast } from './Toast';
+import { useTokens } from './TokenContext';
+import InsufficientTokensModal from './InsufficientTokensModal';
 
 interface Props {
   template: MailerTemplate;
@@ -47,7 +51,10 @@ export default function SendCampaignModal({ template, fixedParcelKey, prefilledK
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sent: number; errors: number; status: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [insufficient, setInsufficient] = useState<{ required: number; balance: number; action: string } | null>(null);
   const toast = useToast();
+  const { balance, setBalance, refresh } = useTokens();
+  const perPostcard = ACTION_TOKEN_COST.mailer_postcard ?? 4;
 
   // Load candidate parcels from the API when picker is active
   useEffect(() => {
@@ -98,11 +105,20 @@ export default function SendCampaignModal({ template, fixedParcelKey, prefilledK
       });
       setResult({ sent: res.sent_count, errors: res.error_count, status: res.status });
       setStep('sent');
-      toast.success(`Campaign sent · ${res.sent_count} postcard${res.sent_count === 1 ? '' : 's'}`);
+      if (typeof res.tokens?.balance === 'number') setBalance(res.tokens.balance);
+      const spent = res.tokens?.spent ?? perPostcard * res.sent_count;
+      toast.success(
+        `Campaign sent · ${res.sent_count} postcard${res.sent_count === 1 ? '' : 's'} · ${spent} tokens`,
+      );
     } catch (e) {
-      setError((e as Error).message);
-      setStep('failed');
-      toast.error('Campaign failed to send');
+      if (isInsufficientTokens(e)) {
+        setInsufficient({ required: e.required, balance: e.balance, action: e.action });
+        setBalance(e.balance);
+      } else {
+        setError((e as Error).message);
+        setStep('failed');
+        toast.error('Campaign failed to send');
+      }
     } finally {
       setSending(false);
     }
@@ -238,7 +254,13 @@ export default function SendCampaignModal({ template, fixedParcelKey, prefilledK
                 <ul className="mt-1 text-slate-700 space-y-0.5">
                   <li>Template: <strong>{template.name}</strong> ({template.size})</li>
                   <li>Recipients: <strong>{selected.size}</strong></li>
-                  <li>Estimated cost: ~${(selected.size * 0.49).toFixed(2)} at $0.49/postcard</li>
+                  <li>
+                    Token cost:{' '}
+                    <strong>{selected.size * perPostcard} tokens</strong>{' '}
+                    <span className="text-slate-400">
+                      ({perPostcard}/postcard · balance {balance})
+                    </span>
+                  </li>
                 </ul>
               </div>
 
@@ -295,6 +317,18 @@ export default function SendCampaignModal({ template, fixedParcelKey, prefilledK
           )}
         </div>
       </div>
+
+      {insufficient && (
+        <InsufficientTokensModal
+          required={insufficient.required}
+          balance={insufficient.balance}
+          action={insufficient.action}
+          onClose={() => {
+            setInsufficient(null);
+            void refresh();
+          }}
+        />
+      )}
     </div>
   );
 }
