@@ -123,6 +123,32 @@ async def find_absentee_by_zip(
             page += 1
 
 
+def _normalize_property_type(prop_class: str, subtype: str, ptype: str) -> str | None:
+    """Map ATTOM's free-text propClass / propsubtype / proptype to our taxonomy.
+
+    Output: single_family | condo | multi_family | land | commercial |
+            manufactured | other | None
+    """
+    blob = " ".join([prop_class, subtype, ptype]).lower()
+    if not blob.strip():
+        return None
+    if "condo" in blob or "condominium" in blob:
+        return "condo"
+    if "townhouse" in blob or "townhome" in blob:
+        return "townhome"
+    if "manufactured" in blob or "mobile home" in blob:
+        return "manufactured"
+    if "vacant land" in blob or blob.strip() == "land" or "lot " in blob or "acreage" in blob:
+        return "land"
+    if any(k in blob for k in ("commercial", "industrial", "retail", "office", "warehouse", "hotel")):
+        return "commercial"
+    if any(k in blob for k in ("duplex", "triplex", "fourplex", "multi", "apartment")):
+        return "multi_family"
+    if "single family" in blob or "sfr" in blob or "residential" in blob:
+        return "single_family"
+    return "other"
+
+
 def _maybe_absentee(p: dict) -> RawLead | None:
     """Return a RawLead iff this property is absentee-owned.
 
@@ -156,6 +182,14 @@ def _maybe_absentee(p: dict) -> RawLead | None:
     except (TypeError, ValueError):
         lat = lng = None
 
+    # Property type — normalize ATTOM's propClass / propsubtype to our enum
+    summary = p.get("summary") or {}
+    prop_type = _normalize_property_type(
+        summary.get("propClass") or "",
+        summary.get("propsubtype") or "",
+        summary.get("proptype") or "",
+    )
+
     # Property state — ATTOM uses `countrySubd` for the 2-letter state code
     prop_state = (prop_addr.get("countrySubd") or "").upper().strip() or None
     if not prop_state:
@@ -177,6 +211,7 @@ def _maybe_absentee(p: dict) -> RawLead | None:
         owner_name=owner_name,
         latitude=lat,
         longitude=lng,
+        property_type=prop_type,
         extra={
             "attom_id":     (p.get("identifier") or {}).get("attomId"),
             "prop_addr":    prop_addr.get("oneLine"),

@@ -27,6 +27,7 @@ export interface OffMarketRow {
   estimated_value: number | null;
   assessed_value: number | null;
   loan_balance: number | null;
+  property_type: string | null;
   estimated_equity: number | null;
   spread_pct: number | null;
   adu_ready: number;
@@ -51,10 +52,15 @@ export interface OffMarketDetailResponse extends OffMarketRow {
   }[];
 }
 
+export type PropertyType =
+  | 'single_family' | 'condo' | 'townhome' | 'multi_family'
+  | 'land' | 'commercial' | 'manufactured' | 'other';
+
 interface ListParams {
   source?: ApiSource | 'all';
   state?: string;
   county?: string;
+  property_type?: PropertyType;
   limit?: number;
 }
 
@@ -63,6 +69,7 @@ export async function listOffMarket(params: ListParams = {}): Promise<OffMarketL
   if (params.source && params.source !== 'all') url.searchParams.set('source', params.source);
   if (params.state) url.searchParams.set('state', params.state);
   if (params.county) url.searchParams.set('county', params.county);
+  if (params.property_type) url.searchParams.set('property_type', params.property_type);
   if (params.limit) url.searchParams.set('limit', String(params.limit));
 
   const r = await fetch(url.toString());
@@ -82,6 +89,7 @@ export interface CoverageSummary {
   by_state: Record<string, number>;
   states_covered: number;
   top_cities?: { city: string; state: string; count: number }[];
+  by_property_type?: Record<string, number>;
 }
 
 export async function getCoverage(): Promise<CoverageSummary> {
@@ -106,13 +114,17 @@ export interface Pin {
   estimated_value: number | null;
   assessed_value: number | null;
   loan_balance: number | null;
+  property_type: string | null;
   last_seen: string;
 }
 
-export async function getPins(params: { state?: string; source?: ApiSource | 'all' } = {}): Promise<{ pins: Pin[]; count: number }> {
+export async function getPins(
+  params: { state?: string; source?: ApiSource | 'all'; property_type?: PropertyType } = {}
+): Promise<{ pins: Pin[]; count: number }> {
   const url = new URL(`${API_BASE}/off-market/_/pins`);
   if (params.state) url.searchParams.set('state', params.state);
   if (params.source && params.source !== 'all') url.searchParams.set('source', params.source);
+  if (params.property_type) url.searchParams.set('property_type', params.property_type);
   const r = await fetch(url.toString());
   if (!r.ok) throw new Error(`API ${r.status}`);
   return r.json();

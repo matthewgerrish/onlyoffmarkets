@@ -7,7 +7,12 @@ import {
 import Seo from '../components/Seo';
 import SearchMap from '../components/SearchMap';
 import SmartSearch from '../components/SmartSearch';
-import { listOffMarket, getPins, OffMarketRow, ApiSource, Pin } from '../lib/api';
+import BrowseStates from '../components/BrowseStates';
+import PropertyTypePicker from '../components/PropertyTypePicker';
+import {
+  listOffMarket, getPins, getCoverage,
+  OffMarketRow, ApiSource, Pin, PropertyType, CoverageSummary,
+} from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore, bandHex, bandTextColor, DealScore } from '../lib/score';
 
@@ -20,8 +25,10 @@ export default function Search() {
   const [error, setError] = useState<string | null>(null);
 
   const [state, setState] = useState<string>('');
+  const [propertyType, setPropertyType] = useState<PropertyType | ''>('');
   const [enabledSources, setEnabledSources] = useState<Set<ApiSource>>(new Set(ALL_SOURCES));
   const [minScore, setMinScore] = useState<number>(0);
+  const [coverage, setCoverage] = useState<CoverageSummary | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>('score');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [hoveredKey, setHoveredKey] = useState<string | null>(null);
@@ -38,7 +45,11 @@ export default function Search() {
     let cancelled = false;
     setRows(null);
     setError(null);
-    listOffMarket({ state: state || undefined, limit: 300 })
+    listOffMarket({
+      state: state || undefined,
+      property_type: propertyType || undefined,
+      limit: 300,
+    })
       .then((data) => {
         if (cancelled) return;
         setRows(data.results);
@@ -46,11 +57,19 @@ export default function Search() {
       })
       .catch((e: Error) => !cancelled && setError(e.message));
     // Fetch all pins separately so the map shows every state we cover
-    getPins({ state: state || undefined })
+    getPins({
+      state: state || undefined,
+      property_type: propertyType || undefined,
+    })
       .then((d) => !cancelled && setPins(d.pins))
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [state]);
+  }, [state, propertyType]);
+
+  // Fetch coverage once for filter counts + browse states
+  useEffect(() => {
+    getCoverage().then(setCoverage).catch(() => {});
+  }, []);
 
   const scored = useMemo(() => {
     if (!rows) return null;
@@ -106,6 +125,7 @@ export default function Search() {
         estimated_value: p.estimated_value,
         assessed_value: p.assessed_value,
         loan_balance: p.loan_balance,
+        property_type: p.property_type,
         estimated_equity: null,
         spread_pct: null,
         adu_ready: 0,
@@ -204,7 +224,15 @@ export default function Search() {
 
         {/* Listings column (right) */}
         <aside className="bg-white border-l border-slate-100 flex flex-col h-full overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-end justify-between gap-3">
+          <BrowseStates selected={state} onSelect={setState} />
+          <div className="px-4 py-2 border-b border-slate-100">
+            <PropertyTypePicker
+              value={propertyType}
+              onChange={setPropertyType}
+              counts={coverage?.by_property_type}
+            />
+          </div>
+          <div className="px-5 py-3 border-b border-slate-100 flex items-end justify-between gap-3">
             <div>
               <h1 className="font-display text-xl font-extrabold text-brand-navy leading-tight">
                 Listings in this area

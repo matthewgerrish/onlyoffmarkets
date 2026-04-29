@@ -36,9 +36,10 @@ async def list_off_market(
     source: SOURCE_TYPES = "all",
     state: str | None = Query(None, min_length=2, max_length=2, description="Two-letter state code"),
     county: str | None = None,
+    property_type: str | None = Query(None, description="single_family|condo|townhome|multi_family|land|commercial|manufactured|other"),
     limit: int = Query(60, ge=1, le=300),
 ) -> dict:
-    cache_key = f"off-market:list:{source}:{state or 'any'}:{county or 'any'}:{limit}"
+    cache_key = f"off-market:list:{source}:{state or 'any'}:{county or 'any'}:{property_type or 'any'}:{limit}"
     cached = await cache.get_json(cache_key)
     if cached:
         return cached
@@ -47,6 +48,7 @@ async def list_off_market(
         state=state.upper() if state else None,
         county=county,
         source=None if source == "all" else source,
+        property_type=property_type,
         limit=limit,
     )
 
@@ -90,6 +92,12 @@ async def coverage_summary() -> dict:
             "GROUP BY city, state ORDER BY count(*) DESC LIMIT 80"
         )
         city_rows = cur.fetchall()
+        cur.execute(
+            "SELECT property_type, count(*) FROM off_market_listings "
+            "WHERE property_type IS NOT NULL "
+            "GROUP BY property_type ORDER BY count(*) DESC"
+        )
+        ptype_rows = cur.fetchall()
 
     def _g(row, idx, key):
         return row[idx] if dialect == "pg" else row[key]
@@ -99,6 +107,7 @@ async def coverage_summary() -> dict:
         {"city": _g(r, 0, "city"), "state": _g(r, 1, "state"), "count": _g(r, 2, "count(*)")}
         for r in city_rows
     ]
+    by_property_type = {_g(r, 0, "property_type"): _g(r, 1, "count(*)") for r in ptype_rows}
 
     payload = {
         "total_parcels":  counts["all"],
@@ -106,6 +115,7 @@ async def coverage_summary() -> dict:
         "by_state":       by_state,
         "states_covered": len(by_state),
         "top_cities":     top_cities,
+        "by_property_type": by_property_type,
     }
     await cache.set_json("off-market:coverage", 600, payload)
     return payload
@@ -115,13 +125,14 @@ async def coverage_summary() -> dict:
 async def all_pins(
     state: str | None = Query(None, min_length=2, max_length=2),
     source: SOURCE_TYPES = "all",
+    property_type: str | None = Query(None),
 ) -> dict:
     """Lightweight pin payload for the map — every parcel with coordinates.
 
     Returns only the fields needed to render a marker (parcel_key, lat,
     lng, score-driving fields). Cached for 5 min. Up to 10k pins.
     """
-    cache_key = f"off-market:pins:{state or 'any'}:{source}"
+    cache_key = f"off-market:pins:{state or 'any'}:{source}:{property_type or 'any'}"
     cached = await cache.get_json(cache_key)
     if cached:
         return cached
@@ -134,6 +145,9 @@ async def all_pins(
         if state:
             clauses.append(f"state = {ph}")
             params.append(state.upper())
+        if property_type:
+            clauses.append(f"property_type = {ph}")
+            params.append(property_type)
         if source != "all":
             if dialect == "pg":
                 clauses.append(f"source_tags @> {ph}::jsonb")
@@ -148,7 +162,8 @@ async def all_pins(
             f"SELECT parcel_key, latitude, longitude, source_tags, "
             f"default_amount, lien_amount, asking_price, sale_date, "
             f"years_delinquent, vacancy_months, owner_state, state, "
-            f"estimated_value, assessed_value, loan_balance, last_seen "
+            f"estimated_value, assessed_value, loan_balance, "
+            f"property_type, last_seen "
             f"FROM off_market_listings {where} LIMIT 10000",
             tuple(params),
         )
@@ -181,6 +196,7 @@ async def all_pins(
                 "estimated_value": d.get("estimated_value"),
                 "assessed_value": d.get("assessed_value"),
                 "loan_balance": d.get("loan_balance"),
+                "property_type": d.get("property_type"),
                 "last_seen": str(d["last_seen"]) if d.get("last_seen") else None,
             })
 

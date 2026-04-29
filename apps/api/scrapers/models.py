@@ -62,6 +62,9 @@ class RawLead(BaseModel):
     latitude:         float | None = None
     longitude:        float | None = None
 
+    # Property classification (single_family, condo, multi_family, land, commercial, manufactured, other)
+    property_type:    str | None = None
+
     # Valuation enrichment (ATTOM AVM, county assessor, recorded mortgage)
     estimated_value:  int | None = None            # current market AVM
     assessed_value:   int | None = None            # county tax-assessed

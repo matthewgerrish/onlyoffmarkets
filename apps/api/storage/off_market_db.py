@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS off_market_listings (
     owner_name         TEXT,
     latitude           REAL,
     longitude          REAL,
+    property_type      TEXT,
     estimated_value    INTEGER,
     assessed_value     INTEGER,
     loan_balance       INTEGER,
@@ -122,6 +123,7 @@ CREATE TABLE IF NOT EXISTS off_market_listings (
     owner_name         TEXT,
     latitude           DOUBLE PRECISION,
     longitude          DOUBLE PRECISION,
+    property_type      TEXT,
     estimated_value    BIGINT,
     assessed_value     BIGINT,
     loan_balance       BIGINT,
@@ -137,6 +139,7 @@ ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS loan_balance   BIGINT;
 ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS owner_name     TEXT;
 ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS latitude       DOUBLE PRECISION;
 ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS longitude      DOUBLE PRECISION;
+ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS property_type  TEXT;
 CREATE INDEX IF NOT EXISTS idx_off_market_state     ON off_market_listings(state);
 CREATE INDEX IF NOT EXISTS idx_off_market_county    ON off_market_listings(county);
 CREATE INDEX IF NOT EXISTS idx_off_market_last_seen ON off_market_listings(last_seen);
@@ -194,6 +197,7 @@ def _sqlite_migrate(conn) -> None:
     for col, decl in [
         ("assessed_value", "INTEGER"), ("loan_balance", "INTEGER"),
         ("owner_name", "TEXT"), ("latitude", "REAL"), ("longitude", "REAL"),
+        ("property_type", "TEXT"),
     ]:
         if col not in existing:
             conn.execute(f"ALTER TABLE off_market_listings ADD COLUMN {col} {decl}")
@@ -270,11 +274,11 @@ def upsert(lead: RawLead) -> str | None:
                 source_tags,
                 default_amount, sale_date, asking_price, lien_amount,
                 years_delinquent, vacancy_months, owner_state, owner_name,
-                latitude, longitude,
+                latitude, longitude, property_type,
                 estimated_value, assessed_value, loan_balance,
                 first_seen, last_seen
             )
-            VALUES ({", ".join([ph] * 23)})
+            VALUES ({", ".join([ph] * 24)})
             ON CONFLICT (parcel_key) DO UPDATE SET
                 parcel_apn       = COALESCE(EXCLUDED.parcel_apn, off_market_listings.parcel_apn),
                 address          = COALESCE(EXCLUDED.address, off_market_listings.address),
@@ -293,6 +297,7 @@ def upsert(lead: RawLead) -> str | None:
                 owner_name       = COALESCE(EXCLUDED.owner_name, off_market_listings.owner_name),
                 latitude         = COALESCE(EXCLUDED.latitude, off_market_listings.latitude),
                 longitude        = COALESCE(EXCLUDED.longitude, off_market_listings.longitude),
+                property_type    = COALESCE(EXCLUDED.property_type, off_market_listings.property_type),
                 estimated_value  = COALESCE(EXCLUDED.estimated_value, off_market_listings.estimated_value),
                 assessed_value   = COALESCE(EXCLUDED.assessed_value, off_market_listings.assessed_value),
                 loan_balance     = COALESCE(EXCLUDED.loan_balance, off_market_listings.loan_balance),
@@ -306,7 +311,7 @@ def upsert(lead: RawLead) -> str | None:
                 sale_date_str,
                 lead.asking_price, lead.lien_amount,
                 lead.years_delinquent, lead.vacancy_duration_months, lead.owner_state, lead.owner_name,
-                lead.latitude, lead.longitude,
+                lead.latitude, lead.longitude, lead.property_type,
                 lead.estimated_value, lead.assessed_value, lead.loan_balance,
                 now, now,
             ),
@@ -319,6 +324,7 @@ def query(
     state: str | None = None,
     county: str | None = None,
     source: str | None = None,
+    property_type: str | None = None,
     limit: int = 100,
 ) -> list[dict]:
     """Cheap fetch for the API — returns the canonical records, newest first."""
@@ -333,6 +339,9 @@ def query(
         if county:
             clauses.append(f"county = {ph}")
             params.append(county)
+        if property_type:
+            clauses.append(f"property_type = {ph}")
+            params.append(property_type)
         if source:
             if dialect == "pg":
                 clauses.append(f"source_tags @> {ph}::jsonb")
