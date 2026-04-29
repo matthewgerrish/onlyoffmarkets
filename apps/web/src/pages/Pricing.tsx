@@ -183,6 +183,49 @@ export default function Pricing() {
         </div>
       </section>
 
+      {/* Skip-trace add-on */}
+      <section className="container-page py-12 border-t border-slate-100">
+        <div className="max-w-3xl mx-auto text-center">
+          <p className="text-xs font-bold text-brand-500 uppercase tracking-wider">Owner contact lookups</p>
+          <h2 className="mt-2 font-display text-3xl sm:text-4xl font-extrabold text-brand-navy">
+            Skip-trace, pay only when you use it.
+          </h2>
+          <p className="mt-3 text-slate-600">
+            Two tiers, both billed per successful lookup. Prices include a 20% platform fee
+            on top of the underlying provider cost — no surprise charges.
+          </p>
+        </div>
+
+        <div className="mt-8 grid sm:grid-cols-2 gap-4 max-w-3xl mx-auto">
+          <div className="card card-hover p-5">
+            <div className="text-xs font-bold uppercase tracking-wider text-brand-500">Standard</div>
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="font-display font-extrabold text-3xl text-brand-navy">$0.12</span>
+              <span className="text-slate-500 text-sm">/lookup</span>
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">via BatchData · ~70% match · 20% markup</div>
+            <p className="mt-3 text-sm text-slate-600">
+              Mobile + landline + email. Best ROI for solo investors and high-volume mailers.
+            </p>
+          </div>
+          <div className="card card-hover p-5 border-amber-200">
+            <div className="text-xs font-bold uppercase tracking-wider text-amber-600">Pro</div>
+            <div className="mt-2 flex items-baseline gap-1">
+              <span className="font-display font-extrabold text-3xl text-brand-navy">$0.60</span>
+              <span className="text-slate-500 text-sm">/lookup</span>
+            </div>
+            <div className="mt-1 text-[11px] text-slate-500">via TLOxp · ~92% match · 20% markup</div>
+            <p className="mt-3 text-sm text-slate-600">
+              TransUnion-backed. Multiple phones, deceased flag, relatives. Use when the
+              first attempt strikes out.
+            </p>
+          </div>
+        </div>
+        <p className="mt-4 text-center text-xs text-slate-400">
+          Lookups can be triggered from any property page or in bulk before a mailer campaign.
+        </p>
+      </section>
+
       {/* Comparison table */}
       <section className="container-page py-16 border-t border-slate-100">
         <div className="text-center max-w-2xl mx-auto">

@@ -26,6 +26,18 @@ export interface MailerCampaign {
   sent_at: string | null;
 }
 
+export type SkipTraceTier = 'standard' | 'pro';
+
+export interface SkipTraceTierInfo {
+  tier: SkipTraceTier;
+  label: string;
+  provider_label: string;
+  advertised_usd: number;
+  markup_pct: number;
+  match_rate_pct: number;
+  description: string;
+}
+
 export interface OwnerContact {
   provider: string;
   owner_name: string | null;
@@ -33,11 +45,31 @@ export interface OwnerContact {
   emails: { address: string; confidence: string }[];
   mailing_address: string | null;
   notes?: string;
+  tier?: SkipTraceTier;
+  tier_label?: string;
+  billing?: {
+    tier: SkipTraceTier;
+    provider_label: string;
+    advertised_usd: number;
+    markup_pct: number;
+    billed: boolean;
+  };
 }
 
-export async function lookupOwner(parcelKey: string): Promise<OwnerContact> {
-  const r = await fetch(`${API_BASE}/owner/${encodeURIComponent(parcelKey)}`);
+export async function lookupOwner(
+  parcelKey: string,
+  tier: SkipTraceTier = 'standard',
+): Promise<OwnerContact> {
+  const r = await fetch(
+    `${API_BASE}/owner/${encodeURIComponent(parcelKey)}?tier=${tier}`,
+  );
   if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+export async function getSkipTracePricing(): Promise<{ tiers: SkipTraceTierInfo[] }> {
+  const r = await fetch(`${API_BASE}/owner/_/pricing`);
+  if (!r.ok) throw new Error(`API ${r.status}`);
   return r.json();
 }
 

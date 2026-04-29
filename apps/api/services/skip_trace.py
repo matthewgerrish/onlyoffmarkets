@@ -1,87 +1,91 @@
-"""Skip-trace (owner contact lookup).
+"""Skip-trace orchestrator.
 
-Real implementations: BatchData, REIPro, PropStream, Whitepages, IDI Data.
-All paid. We expose a single `lookup(parcel_key, address)` interface.
-When no provider is configured, return deterministic mock data so the
-UI can be built end-to-end.
+Public API:
 
-Set one of these env vars to enable live providers:
-  BATCHDATA_API_KEY
-  PROPSTREAM_API_KEY
-  WHITEPAGES_API_KEY
+    lookup(parcel_key, address=None, known_owner_name=None, tier="standard")
+        → dict with provider, owner_name, phones, emails, mailing_address,
+          notes, billing.
+
+Tier dispatch + pricing/margin live in `skip_trace_pricing` and
+`skip_trace_providers`. This file is the thin glue layer that:
+
+  1. Picks the tier-appropriate provider (BatchData / TLOxp / mock).
+  2. Logs usage so we can bill end-of-period.
+  3. Adds a human-readable note + billing block to the response.
 """
 from __future__ import annotations
 
-import hashlib
 import logging
-import os
-from typing import Any, Dict, List
+from typing import Any
+
+from services import skip_trace_pricing as pricing
+from services import skip_trace_providers as providers
+from services import usage_log
 
 log = logging.getLogger(__name__)
 
 
-def _has_real_provider() -> bool:
-    return any(
-        os.environ.get(k)
-        for k in ("BATCHDATA_API_KEY", "PROPSTREAM_API_KEY", "WHITEPAGES_API_KEY")
+def lookup(
+    parcel_key: str,
+    address: str | None = None,
+    known_owner_name: str | None = None,
+    tier: str = "standard",
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Resolve owner contact and emit a usage row."""
+    if tier not in ("standard", "pro"):
+        tier = "standard"
+    info = pricing.get(tier)
+
+    try:
+        result = providers.lookup(tier, parcel_key, address, known_owner_name)
+        success = bool(result.get("phones") or result.get("emails"))
+    except Exception as exc:  # pragma: no cover — defensive
+        log.error("Skip-trace lookup blew up unexpectedly: %s", exc)
+        result = {
+            "provider": "error",
+            "owner_name": known_owner_name,
+            "phones": [],
+            "emails": [],
+            "mailing_address": None,
+        }
+        success = False
+
+    using_mock = result.get("provider", "").startswith("mock")
+    note = (
+        f"Demo data — set "
+        f"{'BATCHDATA_API_KEY' if tier == 'standard' else 'TLO_API_KEY'} "
+        f"to enable live {info['provider_label']} lookups."
+        if using_mock
+        else f"Live data via {info['provider_label']} ({info['match_rate_pct']}% match rate)."
     )
 
-
-def _mock_phone(seed: str) -> str:
-    h = hashlib.sha1(seed.encode()).hexdigest()
-    area = (int(h[:3], 16) % 700) + 200          # 200-899
-    nxx = (int(h[3:6], 16) % 700) + 200
-    line = int(h[6:10], 16) % 10000
-    return f"({area}) {nxx:03d}-{line:04d}"
-
-
-def _mock_email(seed: str) -> str:
-    h = hashlib.sha1(seed.encode()).hexdigest()[:8]
-    return f"owner.{h}@example.com"
-
-
-def _mock_name(seed: str) -> str:
-    first = ["James", "Linda", "Robert", "Mary", "Michael", "Patricia", "John", "Jennifer"]
-    last = ["Hansen", "Martinez", "Cohen", "Patel", "Nguyen", "Williams", "Thompson", "Lee"]
-    h = int(hashlib.sha1(seed.encode()).hexdigest(), 16)
-    return f"{first[h % len(first)]} {last[(h // 11) % len(last)]}"
-
-
-def lookup(parcel_key: str, address: str | None = None, known_owner_name: str | None = None) -> Dict[str, Any]:
-    """Return owner contact info.
-
-    If we already know the owner name (from ATTOM during scrape), surface it
-    directly. Phones/emails still require a paid provider; until one is wired,
-    those stay mock so the UI works in dev.
-    """
-    if _has_real_provider():
-        # TODO: wire provider HTTP call.
-        # Each vendor differs: BatchData uses POST /property/skip-trace,
-        # PropStream uses /v1/skiptrace/property, etc. Until a key is set,
-        # we deliberately fall through to mock so the UI works in dev.
-        log.warning("Skip-trace provider env var set but client not implemented yet — returning mock")
-
-    seed = parcel_key + (address or "")
-    phones: List[Dict[str, str]] = [
-        {"number": _mock_phone(seed), "type": "Mobile", "confidence": "high"},
-        {"number": _mock_phone(seed + "h"), "type": "Landline", "confidence": "medium"},
-    ]
-    emails: List[Dict[str, str]] = [
-        {"address": _mock_email(seed), "confidence": "medium"},
-    ]
-    # Real owner name from ATTOM beats the mock name
-    owner_name = known_owner_name or _mock_name(seed)
-    has_real_name = bool(known_owner_name)
-    return {
-        "provider": "attom" if has_real_name else "mock",
-        "owner_name": owner_name,
-        "phones": phones,
-        "emails": emails,
-        "mailing_address": None,
-        "notes": (
-            "Owner name from public assessor (ATTOM). Phone + email mocked — "
-            "set BATCHDATA_API_KEY / PROPSTREAM_API_KEY for real contact lookup."
-        ) if has_real_name else (
-            "Mock data — set BATCHDATA_API_KEY / PROPSTREAM_API_KEY for real lookups."
-        ),
+    # Append billing + display fields the frontend renders directly.
+    result["tier"] = info["tier"]
+    result["tier_label"] = info["label"]
+    result["billing"] = {
+        "tier": info["tier"],
+        "provider_label": info["provider_label"],
+        "advertised_usd": info["advertised_usd"],
+        "markup_pct": info["markup_pct"],
+        "billed": not using_mock,
     }
+    result["notes"] = note
+
+    # Only bill (and log cost) when the call actually went out.
+    if not using_mock:
+        usage_log.record(
+            parcel_key=parcel_key,
+            tier=tier,
+            provider=info["provider_id"],
+            cost_usd=info["cost_usd"],
+            charged_usd=info["advertised_usd"],
+            success=success,
+            user_id=user_id,
+        )
+
+    return result
+
+
+# Re-export for any legacy callers that imported the pricing helpers from here.
+list_tiers = pricing.list_tiers
