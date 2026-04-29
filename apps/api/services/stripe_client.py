@@ -61,7 +61,7 @@ def checkout_token_pack(
     session = stripe.checkout.Session.create(
         mode="payment",
         client_reference_id=user_id,
-        success_url=f"{PUBLIC_WEB_URL}/tokens?status=success",
+        success_url=f"{PUBLIC_WEB_URL}/tokens?status=success&session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{PUBLIC_WEB_URL}/tokens?status=cancelled",
         line_items=[
             {
@@ -123,7 +123,7 @@ def checkout_membership(
     session = stripe.checkout.Session.create(
         mode="subscription",
         client_reference_id=user_id,
-        success_url=f"{PUBLIC_WEB_URL}/membership?status=success",
+        success_url=f"{PUBLIC_WEB_URL}/membership?status=success&session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{PUBLIC_WEB_URL}/membership?status=cancelled",
         line_items=line_items,
         metadata={"kind": "membership", "plan": plan, "user_id": user_id},

@@ -11,7 +11,7 @@ import {
   PackagesResponse,
   TokenTransaction,
 } from '../lib/tokens';
-import { checkoutTokens } from '../lib/billing';
+import { checkoutTokens, confirmSession } from '../lib/billing';
 
 export default function Tokens() {
   const { summary, refresh, balance } = useTokens();
@@ -30,11 +30,31 @@ export default function Tokens() {
   // Surface ?status=success / cancelled returning from Stripe
   useEffect(() => {
     const status = params.get('status');
+    const sessionId = params.get('session_id');
     if (status === 'success') {
-      toast.success('Purchase complete · tokens credited');
-      void refresh();
-      getTransactions(20).then(setTx).catch(() => {});
+      toast.success('Payment received · crediting tokens…');
+      const reconcile = async () => {
+        if (sessionId) {
+          try {
+            const r = await confirmSession(sessionId);
+            if (r.credited) {
+              toast.success(
+                `+${r.credited} tokens credited` +
+                  (r.bonus ? ` (incl. ${r.bonus} Premium bonus)` : ''),
+              );
+            } else if (r.already_credited) {
+              // Webhook beat us to it — no double credit.
+            }
+          } catch {
+            /* fall through to refresh */
+          }
+        }
+        await refresh();
+        getTransactions(20).then(setTx).catch(() => {});
+      };
+      void reconcile();
       params.delete('status');
+      params.delete('session_id');
       setParams(params, { replace: true });
     } else if (status === 'cancelled') {
       toast.info('Checkout cancelled');

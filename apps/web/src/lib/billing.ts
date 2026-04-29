@@ -63,6 +63,38 @@ export async function checkoutMembership(
   return r.json();
 }
 
+export async function confirmSession(sessionId: string): Promise<{
+  ok: boolean;
+  plan?: string;
+  credited?: number;
+  bonus?: number;
+  already_credited?: boolean;
+  payment_status?: string;
+  mock?: boolean;
+}> {
+  const r = await fetch(`${API_BASE}/billing/confirm-session`, {
+    method: 'POST',
+    headers: apiHeaders({ 'Content-Type': 'application/json' }),
+    body: JSON.stringify({ session_id: sessionId }),
+  });
+  if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
+  return r.json();
+}
+
+export async function syncFromStripe(): Promise<{
+  ok: boolean;
+  plan?: string;
+  reason?: string;
+  mock?: boolean;
+}> {
+  const r = await fetch(`${API_BASE}/billing/sync`, {
+    method: 'POST',
+    headers: apiHeaders(),
+  });
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}
+
 export async function openCustomerPortal(): Promise<{ url: string; mock: boolean }> {
   const r = await fetch(`${API_BASE}/billing/portal`, {
     method: 'POST',

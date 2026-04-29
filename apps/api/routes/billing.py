@@ -109,6 +109,147 @@ async def checkout_membership(
     )
 
 
+# ---------- Confirm / sync (webhook-independent) ------------------------------
+
+@router.post("/confirm-session")
+async def confirm_session(
+    body: dict,
+    x_user_id: str | None = Header(default=None),
+) -> dict:
+    """Confirm a single Checkout Session by id.
+
+    Frontend calls this on the `?status=success&session_id=...` landing.
+    Idempotent — if the webhook already credited / activated, this becomes
+    a no-op. Solves the case where Stripe's webhook delivery is delayed,
+    rate-limited, or misconfigured.
+    """
+    user_id = _user(x_user_id)
+    session_id = (body or {}).get("session_id")
+    if not session_id:
+        raise HTTPException(400, "session_id required")
+    if not stripe_client.is_live():
+        return {"ok": True, "mock": True}
+
+    import stripe  # type: ignore[import-untyped]
+
+    stripe.api_key = stripe_client.STRIPE_SECRET
+    try:
+        s = stripe.checkout.Session.retrieve(session_id)
+    except Exception as exc:
+        log.warning("confirm-session retrieve failed: %s", exc)
+        raise HTTPException(404, "Session not found")
+
+    if s.get("payment_status") not in ("paid", "no_payment_required"):
+        return {"ok": False, "payment_status": s.get("payment_status")}
+
+    metadata = s.get("metadata") or {}
+    if metadata.get("user_id") and metadata["user_id"] != user_id:
+        # Session belongs to a different user — refuse to reconcile.
+        raise HTTPException(403, "Session belongs to a different user")
+
+    kind = metadata.get("kind")
+    if kind == "tokens":
+        pack_id = metadata.get("pack_id") or "starter"
+        try:
+            pkg = tokens_pricing.get_package(pack_id)
+        except ValueError:
+            raise HTTPException(400, "Unknown pack")
+        bonus_pct = int(metadata.get("bonus_pct") or 0)
+        bonus_tokens = pkg["tokens"] * bonus_pct // 100
+        total = pkg["tokens"] + bonus_tokens
+        # Idempotency: refuse double-credit by checking a marker note.
+        marker = f"session:{session_id}"
+        existing = tokens_db.transactions(user_id, limit=200)
+        if any((tx.get("note") or "").endswith(marker) for tx in existing):
+            return {"ok": True, "already_credited": True}
+        tokens_db.credit(
+            user_id, total,
+            kind="purchase", package_id=pkg["id"],
+            note=f"Stripe checkout — {pkg['label']} pack [{marker}]"
+                 + (f" (+{bonus_tokens} Premium bonus)" if bonus_tokens else ""),
+        )
+        return {"ok": True, "credited": total, "bonus": bonus_tokens}
+
+    if kind == "membership":
+        plan = metadata.get("plan", "standard")
+        memberships_db.set_plan(
+            user_id, plan,
+            status="active",
+            stripe_customer_id=s.get("customer"),
+            stripe_subscription_id=s.get("subscription"),
+        )
+        return {"ok": True, "plan": plan}
+
+    raise HTTPException(400, f"Unknown checkout kind: {kind}")
+
+
+@router.post("/sync")
+async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict:
+    """Recover any active subscription on the user's Stripe account.
+
+    Falls back to listing recent active subscriptions whose
+    `metadata.user_id` matches. Used when the webhook never delivered
+    (events not subscribed, URL typo, network) so users who paid still
+    get their Premium.
+    """
+    user_id = _user(x_user_id)
+    if not stripe_client.is_live():
+        return {"ok": True, "mock": True}
+
+    import stripe  # type: ignore[import-untyped]
+
+    stripe.api_key = stripe_client.STRIPE_SECRET
+
+    # 1) Look at this user's stored stripe_customer_id first (faster).
+    row = memberships_db.get(user_id)
+    cust_id = row.get("stripe_customer_id")
+    sub: dict | None = None
+
+    if cust_id and not str(cust_id).startswith("mock_"):
+        try:
+            subs = stripe.Subscription.list(customer=cust_id, status="active", limit=5)
+            data = subs.get("data") or []
+            if data:
+                sub = dict(data[0])
+        except Exception as exc:
+            log.warning("sync stripe.Subscription.list(customer=) failed: %s", exc)
+
+    # 2) Fall back to scanning recent active subs across the whole account.
+    if not sub:
+        try:
+            subs = stripe.Subscription.list(status="active", limit=20)
+            for s in subs.get("data") or []:
+                md = s.get("metadata") or {}
+                if md.get("user_id") == user_id:
+                    sub = dict(s)
+                    break
+        except Exception as exc:
+            log.warning("sync stripe.Subscription.list() failed: %s", exc)
+
+    if not sub:
+        return {"ok": False, "reason": "no_active_subscription"}
+
+    plan = (sub.get("metadata") or {}).get("plan") or "standard"
+    period_end = sub.get("current_period_end")
+    period_end_str = None
+    if period_end:
+        from datetime import datetime, timezone
+        try:
+            period_end_str = datetime.fromtimestamp(int(period_end), tz=timezone.utc).isoformat()
+        except Exception:
+            period_end_str = None
+
+    memberships_db.set_plan(
+        user_id, plan,
+        status=sub.get("status", "active"),
+        stripe_customer_id=sub.get("customer"),
+        stripe_subscription_id=sub.get("id"),
+        current_period_end=period_end_str,
+        cancel_at_period_end=bool(sub.get("cancel_at_period_end")),
+    )
+    return {"ok": True, "plan": plan, "subscription_id": sub.get("id")}
+
+
 # ---------- Customer portal ---------------------------------------------------
 
 @router.post("/portal")

@@ -5,14 +5,19 @@ import Logo from './Logo';
 import TokenBadge from './TokenBadge';
 import MembershipBadge from './MembershipBadge';
 
+/** Primary nav — kept short so the bar fits on standard laptop widths. */
 const nav = [
   { to: '/search', label: 'Search', icon: Search },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/mailers', label: 'Mailers', icon: Mail },
   { to: '/tokens', label: 'Tokens', icon: Coins },
   { to: '/membership', label: 'Membership', icon: Crown },
-  { to: '/sources', label: 'Sources', icon: Database },
   { to: '/pricing', label: 'Pricing', icon: DollarSign },
+];
+
+/** Secondary nav — folded into mobile drawer + footer only. */
+const navSecondary = [
+  { to: '/sources', label: 'Sources', icon: Database },
   { to: '/about', label: 'About', icon: Info },
 ];
 
@@ -22,39 +27,52 @@ export default function Layout() {
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
-      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur border-b border-slate-100">
-        <div className="container-page flex h-16 items-center justify-between gap-3">
-          <Link to="/" aria-label="OnlyOffMarkets home" className="shrink-0 sm:-my-4 inline-flex items-center">
+      <header className="sticky top-0 z-40 bg-white/85 backdrop-blur border-b border-slate-100 overflow-hidden">
+        <div className="container-page flex h-16 items-center justify-between gap-2 min-w-0">
+          <Link
+            to="/"
+            aria-label="OnlyOffMarkets home"
+            className="shrink-0 sm:-my-4 inline-flex items-center min-w-0"
+          >
             {/* Phone: icon + tight wordmark · Tablet/desktop: full */}
             <span className="sm:hidden">
-              <Logo size={56} wordmarkSize={20} showTld={false} />
+              <Logo size={48} wordmarkSize={18} showTld={false} />
             </span>
-            <span className="hidden sm:inline-flex">
-              <Logo size={80} wordmarkSize={32} />
+            <span className="hidden sm:inline-flex lg:hidden">
+              <Logo size={64} wordmarkSize={24} />
+            </span>
+            <span className="hidden lg:inline-flex">
+              <Logo size={72} wordmarkSize={28} />
             </span>
           </Link>
 
-          <nav className="hidden lg:flex items-center gap-1">
+          <nav className="hidden lg:flex items-center gap-0.5 min-w-0 overflow-hidden">
             {nav.map(({ to, label, icon: Icon }) => (
               <NavLink
                 key={to}
                 to={to}
                 className={({ isActive }) =>
-                  `btn-ghost text-sm whitespace-nowrap ${isActive ? 'text-brand-600 bg-brand-50' : ''}`
+                  `inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full text-sm font-semibold whitespace-nowrap transition-colors hover:bg-brand-50 hover:text-brand-600 ${
+                    isActive ? 'text-brand-600 bg-brand-50' : 'text-slate-700'
+                  }`
                 }
               >
-                <Icon className="w-4 h-4" />
-                {label}
+                <Icon className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden xl:inline">{label}</span>
               </NavLink>
             ))}
           </nav>
 
-          <div className="flex items-center gap-2 shrink-0">
-            <span className="hidden md:inline-flex"><MembershipBadge /></span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="hidden lg:inline-flex"><MembershipBadge /></span>
             <span className="hidden sm:inline-flex"><TokenBadge /></span>
             <span className="sm:hidden"><TokenBadge compact /></span>
-            <Link to="/search" className="btn-ghost text-sm hidden md:inline-flex whitespace-nowrap">Sign in</Link>
-            <Link to="/membership" className="btn-primary text-sm whitespace-nowrap hidden md:inline-flex">Subscribe</Link>
+            <Link
+              to="/membership"
+              className="btn-primary text-xs whitespace-nowrap hidden xl:inline-flex !px-3 !py-1.5"
+            >
+              Subscribe
+            </Link>
             <button
               type="button"
               className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-full text-slate-700 hover:bg-slate-100"
@@ -139,7 +157,7 @@ function MobileDrawer({
         </div>
 
         <nav className="flex-1 overflow-y-auto py-3">
-          {nav.map(({ to, label, icon: Icon }) => {
+          {[...nav, ...navSecondary].map(({ to, label, icon: Icon }) => {
             const active = currentPath === to || currentPath.startsWith(to + '/');
             return (
               <Link

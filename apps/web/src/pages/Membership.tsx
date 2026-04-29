@@ -7,6 +7,8 @@ import { useMembership } from '../components/MembershipContext';
 import {
   getPlans,
   checkoutMembership,
+  confirmSession,
+  syncFromStripe,
   openCustomerPortal,
   Plan,
   PlanId,
@@ -32,10 +34,34 @@ export default function Membership() {
   // Surface success/cancel from Stripe Checkout return URL
   useEffect(() => {
     const status = params.get('status');
+    const sessionId = params.get('session_id');
     if (status === 'success') {
-      toast.success('Membership updated · refreshing your plan…');
-      void refresh();
+      toast.success('Payment received · activating your plan…');
+      // 1) Try the precise path: confirm this exact session.
+      // 2) If session_id missing or confirm errors, sync recent active subs.
+      // 3) Always refresh the membership context at the end.
+      const reconcile = async () => {
+        if (sessionId) {
+          try {
+            const r = await confirmSession(sessionId);
+            if (r.plan) toast.success(`${r.plan[0].toUpperCase() + r.plan.slice(1)} activated`);
+          } catch {
+            // fall through to sync
+          }
+        }
+        try {
+          const sync = await syncFromStripe();
+          if (sync.plan && !sessionId) {
+            toast.success(`${sync.plan[0].toUpperCase() + sync.plan.slice(1)} activated`);
+          }
+        } catch {
+          /* swallow — context refresh below catches DB writes either way */
+        }
+        await refresh();
+      };
+      void reconcile();
       params.delete('status');
+      params.delete('session_id');
       setParams(params, { replace: true });
     } else if (status === 'cancelled') {
       toast.info('Checkout cancelled');
@@ -68,6 +94,20 @@ export default function Membership() {
     } catch (e) {
       toast.error((e as Error).message || 'Could not open portal');
       setBusy(null);
+    }
+  };
+
+  const onSync = async () => {
+    try {
+      const r = await syncFromStripe();
+      if (r.plan) {
+        toast.success(`Synced — you're on ${r.plan}`);
+        await refresh();
+      } else {
+        toast.info('No active subscription found on Stripe');
+      }
+    } catch (e) {
+      toast.error((e as Error).message || 'Sync failed');
     }
   };
 
@@ -115,6 +155,13 @@ export default function Membership() {
                   Manage
                 </button>
               )}
+              <button
+                onClick={onSync}
+                title="Re-check Stripe — recovers a paid plan if the webhook missed"
+                className="ml-1 text-xs text-slate-500 hover:text-brand-700 underline"
+              >
+                Sync
+              </button>
             </div>
           )}
         </div>
