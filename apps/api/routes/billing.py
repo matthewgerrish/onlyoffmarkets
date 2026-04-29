@@ -217,10 +217,41 @@ async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
         except Exception:
             return default
 
+    def _iter_data(resp):
+        """Yield items from a Stripe ListObject regardless of SDK shape."""
+        # Try attribute access first (most stable across v9-11+).
+        items = getattr(resp, "data", None)
+        if items is None:
+            try:
+                items = resp["data"]
+            except Exception:
+                items = []
+        return items or []
+
+    def _md_dict(obj):
+        m = _attr(obj, "metadata", None)
+        if m is None:
+            return {}
+        if hasattr(m, "to_dict_recursive"):
+            try:
+                return m.to_dict_recursive()
+            except Exception:
+                pass
+        if hasattr(m, "to_dict"):
+            try:
+                return dict(m.to_dict())
+            except Exception:
+                pass
+        try:
+            return dict(m)
+        except Exception:
+            return {}
+
     sessions: list[dict] = []
     try:
-        for s in stripe.checkout.Session.list(limit=20).auto_paging_iter():
-            md = _attr(s, "metadata", {}) or {}
+        ses_resp = stripe.checkout.Session.list(limit=20)
+        for s in _iter_data(ses_resp):
+            md = _md_dict(s)
             sessions.append({
                 "id": _attr(s, "id"),
                 "client_reference_id": _attr(s, "client_reference_id"),
@@ -228,11 +259,9 @@ async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
                 "mode": _attr(s, "mode"),
                 "subscription": _attr(s, "subscription"),
                 "customer": _attr(s, "customer"),
-                "metadata": dict(md) if md else {},
+                "metadata": md,
                 "created": _attr(s, "created"),
             })
-            if len(sessions) >= 20:
-                break
     except Exception as exc:
         log.exception("debug_me sessions list failed")
         out["sessions_error"] = f"{type(exc).__name__}: {exc}"
@@ -241,22 +270,21 @@ async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
 
     subs: list[dict] = []
     try:
-        for s in stripe.Subscription.list(status="all", limit=20).auto_paging_iter():
-            md = _attr(s, "metadata", {}) or {}
+        sub_resp = stripe.Subscription.list(status="all", limit=20)
+        for s in _iter_data(sub_resp):
+            md = _md_dict(s)
             subs.append({
                 "id": _attr(s, "id"),
                 "status": _attr(s, "status"),
                 "customer": _attr(s, "customer"),
-                "metadata": dict(md) if md else {},
+                "metadata": md,
                 "created": _attr(s, "created"),
             })
-            if len(subs) >= 20:
-                break
     except Exception as exc:
         log.exception("debug_me subs list failed")
         out["subs_error"] = f"{type(exc).__name__}: {exc}"
     out["all_recent_subscriptions"] = subs
-    out["my_subscriptions"] = [s for s in subs if (s.get("metadata") or {}).get("user_id") == user_id]
+    out["my_subscriptions"] = [s for s in subs if s["metadata"].get("user_id") == user_id]
 
     return out
 
@@ -291,9 +319,27 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
         except Exception:
             return default
 
+    def _iter_data(resp):
+        items = getattr(resp, "data", None)
+        if items is None:
+            try:
+                items = resp["data"]
+            except Exception:
+                items = []
+        return items or []
+
+    def _md(obj, key):
+        m = _attr(obj, "metadata", None)
+        if m is None:
+            return None
+        if hasattr(m, "get"):
+            return m.get(key)
+        return _attr(m, key)
+
     if cust_id and not str(cust_id).startswith("mock_"):
         try:
-            for s in stripe.Subscription.list(customer=cust_id, status="active", limit=5).auto_paging_iter():
+            resp = stripe.Subscription.list(customer=cust_id, status="active", limit=5)
+            for s in _iter_data(resp):
                 sub = s
                 break
         except Exception as exc:
@@ -302,9 +348,9 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
     # 2) Fall back to scanning recent active subs across the whole account.
     if not sub:
         try:
-            for s in stripe.Subscription.list(status="active", limit=20).auto_paging_iter():
-                md = _attr(s, "metadata", {}) or {}
-                if (md.get("user_id") if hasattr(md, "get") else None) == user_id or _attr(md, "user_id") == user_id:
+            resp = stripe.Subscription.list(status="active", limit=20)
+            for s in _iter_data(resp):
+                if _md(s, "user_id") == user_id:
                     sub = s
                     break
         except Exception as exc:
@@ -314,7 +360,8 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
     #    metadata since we explicitly set client_reference_id = user_id.
     if not sub:
         try:
-            for ses in stripe.checkout.Session.list(limit=20).auto_paging_iter():
+            resp = stripe.checkout.Session.list(limit=20)
+            for ses in _iter_data(resp):
                 if _attr(ses, "client_reference_id") != user_id:
                     continue
                 if _attr(ses, "payment_status") not in ("paid", "no_payment_required"):
@@ -333,8 +380,7 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
     if not sub:
         return {"ok": False, "reason": "no_active_subscription"}
 
-    sub_md = _attr(sub, "metadata", {}) or {}
-    plan = (sub_md.get("plan") if hasattr(sub_md, "get") else None) or _attr(sub_md, "plan") or "standard"
+    plan = _md(sub, "plan") or "standard"
     period_end = _attr(sub, "current_period_end")
     period_end_str = None
     if period_end:
