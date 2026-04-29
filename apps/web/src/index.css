@@ -3,16 +3,118 @@
 @tailwind utilities;
 
 @layer base {
-  body { font-feature-settings: 'cv11', 'ss01'; }
+  html {
+    scroll-behavior: smooth;
+    color-scheme: light;
+  }
+  body {
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  /* Branded focus ring */
+  *:focus-visible {
+    outline: 2px solid #1d6cf2;
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+  /* Buttons / inputs lose the default fugly outline */
+  button:focus-visible,
+  a:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible {
+    outline-offset: 2px;
+  }
+  /* Cleaner native selection color */
+  ::selection {
+    background: #cfe1ff;
+    color: #0f1f3d;
+  }
 }
 
 @layer components {
   .container-page { @apply max-w-7xl mx-auto px-4 sm:px-6 lg:px-8; }
-  .btn { @apply inline-flex items-center justify-center gap-2 rounded-full font-semibold transition-all; }
-  .btn-primary { @apply btn bg-brand-500 text-white hover:bg-brand-600 px-5 py-2.5 shadow-brand hover:shadow-lg; }
-  .btn-ghost { @apply btn text-slate-700 hover:text-brand-600 hover:bg-brand-50 px-4 py-2; }
-  .btn-outline { @apply btn border border-slate-200 text-slate-800 hover:border-brand-500 hover:text-brand-600 px-5 py-2.5; }
-  .card { @apply bg-white border border-slate-200 rounded-2xl; }
-  .input { @apply bg-white border border-slate-200 rounded-full px-4 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100; }
-  .pill { @apply inline-flex items-center gap-1 px-2.5 py-0.5 text-xs rounded-full font-semibold; }
+
+  /* Buttons — every state polished */
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full font-semibold
+           transition-all duration-150 ease-out
+           active:scale-[0.97] active:transition-transform active:duration-75
+           disabled:opacity-50 disabled:cursor-not-allowed disabled:active:scale-100;
+  }
+  .btn-primary {
+    @apply btn bg-brand-500 text-white px-5 py-2.5
+           shadow-brand
+           hover:bg-brand-600 hover:shadow-brand-lg hover:-translate-y-0.5;
+  }
+  .btn-ghost {
+    @apply btn text-slate-700 px-4 py-2
+           hover:text-brand-600 hover:bg-brand-50;
+  }
+  .btn-outline {
+    @apply btn border border-slate-200 text-slate-800 px-5 py-2.5
+           hover:border-brand-500 hover:text-brand-600 hover:-translate-y-0.5
+           hover:shadow-sm;
+  }
+
+  /* Cards — subtle lift on hover */
+  .card {
+    @apply bg-white border border-slate-200 rounded-2xl
+           transition-all duration-200 ease-out;
+  }
+  .card-hover {
+    @apply hover:border-brand-300 hover:shadow-brand hover:-translate-y-0.5;
+  }
+
+  /* Inputs — branded focus */
+  .input {
+    @apply bg-white border border-slate-200 rounded-full px-4 py-2 text-sm
+           text-slate-900 placeholder:text-slate-400
+           transition-all duration-150
+           focus:outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100;
+  }
+
+  .pill {
+    @apply inline-flex items-center gap-1 px-2.5 py-0.5 text-xs rounded-full font-semibold;
+  }
+
+  /* Skeleton shimmer for loading states */
+  .skeleton {
+    @apply rounded-md;
+    background: linear-gradient(90deg, #f1f5f9 0px, #e2e8f0 80px, #f1f5f9 160px);
+    background-size: 200px 100%;
+    @apply animate-shimmer;
+  }
+
+  /* Stagger helper — child gets a small delay per index via inline style */
+  .stagger-child[style] { animation-delay: var(--stagger, 0ms); }
+}
+
+@layer utilities {
+  /* Hide scrollbar but allow scroll (for the BrowseStates pill row) */
+  .scrollbar-thin::-webkit-scrollbar { height: 4px; width: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 4px; }
+  .scrollbar-thin::-webkit-scrollbar-track { background: transparent; }
+
+  /* Hide scrollbar entirely on touch devices that don't honor scrollbar-thin */
+  .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+}
+
+/* Mapbox popup polish */
+.mapboxgl-popup-content {
+  border-radius: 12px !important;
+  box-shadow: 0 12px 32px -8px rgba(15, 31, 61, 0.18) !important;
+  border: 1px solid rgba(226, 232, 240, 0.6);
+  padding: 12px 14px !important;
+}
+.mapboxgl-popup-tip {
+  border-top-color: #fff !important;
+}
+.mapboxgl-ctrl-group {
+  border-radius: 999px !important;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(15, 31, 61, 0.12) !important;
 }

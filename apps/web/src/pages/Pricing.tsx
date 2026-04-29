@@ -147,12 +147,13 @@ export default function Pricing() {
       {/* Tiers */}
       <section className="container-page pb-16">
         <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-          {tiers.map((t) => (
+          {tiers.map((t, i) => (
             <div
               key={t.name}
-              className={`card p-7 flex flex-col relative ${
-                t.highlight ? 'border-brand-500 ring-4 ring-brand-100 shadow-brand' : ''
+              className={`card card-hover p-7 flex flex-col relative animate-fade-in-up ${
+                t.highlight ? 'border-brand-500 ring-4 ring-brand-100 shadow-brand md:-translate-y-2' : ''
               }`}
+              style={{ animationDelay: `${i * 80}ms` }}
             >
               {t.highlight && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 pill bg-brand-500 text-white shadow-md whitespace-nowrap">

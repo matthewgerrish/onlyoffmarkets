@@ -68,7 +68,9 @@ export default function Layout() {
       />
 
       <main className="flex-1">
-        <Outlet />
+        <div key={location.pathname} className="animate-fade-in">
+          <Outlet />
+        </div>
       </main>
 
       <footer className="border-t border-slate-100 mt-16 bg-slate-50">

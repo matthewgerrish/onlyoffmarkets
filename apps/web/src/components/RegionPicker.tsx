@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, MapPin, X } from 'lucide-react';
+import { ChevronDown, MapPin, X } from 'lucide-react';
 
 /** All 50 states + DC, with full names + region tagging. */
 export const ALL_US_STATES: { code: string; name: string; region: Region }[] = [
@@ -190,11 +190,15 @@ export default function RegionPicker({ selected, onChange, counts }: Props) {
                   className="text-slate-400 hover:text-slate-700"
                   aria-label={isOpen ? 'Collapse' : 'Expand'}
                 >
-                  {isOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  <ChevronDown
+                    className={`w-4 h-4 transition-transform duration-200 ${
+                      isOpen ? 'rotate-180' : ''
+                    }`}
+                  />
                 </button>
               </div>
               {isOpen && (
-                <div className="grid grid-cols-2 gap-x-2 gap-y-1 px-3 pb-3 pt-1">
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1 px-3 pb-3 pt-1 animate-fade-in-down">
                   {codes.map((c) => {
                     const meta = ALL_US_STATES.find((s) => s.code === c)!;
                     const n = counts?.[c];

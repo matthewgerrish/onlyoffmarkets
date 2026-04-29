@@ -3,6 +3,7 @@ import { Send, X, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { sendCampaign } from '../lib/mailers';
 import type { MailerTemplate } from '../lib/mailers';
 import { listOffMarket, OffMarketRow } from '../lib/api';
+import { useToast } from './Toast';
 
 interface Props {
   template: MailerTemplate;
@@ -46,6 +47,7 @@ export default function SendCampaignModal({ template, fixedParcelKey, prefilledK
   const [sending, setSending] = useState(false);
   const [result, setResult] = useState<{ sent: number; errors: number; status: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const toast = useToast();
 
   // Load candidate parcels from the API when picker is active
   useEffect(() => {
@@ -96,9 +98,11 @@ export default function SendCampaignModal({ template, fixedParcelKey, prefilledK
       });
       setResult({ sent: res.sent_count, errors: res.error_count, status: res.status });
       setStep('sent');
+      toast.success(`Campaign sent · ${res.sent_count} postcard${res.sent_count === 1 ? '' : 's'}`);
     } catch (e) {
       setError((e as Error).message);
       setStep('failed');
+      toast.error('Campaign failed to send');
     } finally {
       setSending(false);
     }

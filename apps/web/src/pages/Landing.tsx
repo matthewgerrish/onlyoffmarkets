@@ -32,8 +32,8 @@ export default function Landing() {
         <div className="absolute inset-x-0 top-0 h-[520px] bg-[radial-gradient(ellipse_at_top,rgba(29,108,242,0.15),transparent_70%)] pointer-events-none" />
         <div className="container-page relative pt-16 pb-20 lg:pt-24 lg:pb-28">
           <div className="grid lg:grid-cols-[1.1fr_1fr] gap-12 lg:gap-16 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600 mb-6 shadow-sm">
+            <div className="animate-fade-in-up">
+              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600 mb-6 shadow-sm animate-pop-in" style={{ animationDelay: '120ms' }}>
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                 <span className="font-medium">12,847 signals ingested in the last 24h</span>
               </div>
@@ -56,7 +56,7 @@ export default function Landing() {
               </p>
             </div>
 
-            <div className="relative">
+            <div className="relative animate-fade-in-up" style={{ animationDelay: '180ms' }}>
               <HeroMockup />
             </div>
           </div>
@@ -68,8 +68,12 @@ export default function Landing() {
               { label: 'States covered', value: cov ? String(cov.states_covered) : '—' },
               { label: 'Source feeds', value: '19' },
               { label: 'Avg lead age', value: '< 24h' },
-            ].map((s) => (
-              <div key={s.label} className="card p-5 hover:shadow-brand transition-shadow">
+            ].map((s, i) => (
+              <div
+                key={s.label}
+                className="card card-hover p-5 animate-fade-in-up"
+                style={{ animationDelay: `${260 + i * 80}ms` }}
+              >
                 <div className="font-display font-bold text-3xl text-brand-navy">{s.value}</div>
                 <div className="text-xs text-slate-500 mt-1">{s.label}</div>
               </div>
@@ -103,8 +107,12 @@ export default function Landing() {
               title: 'You search or get alerts',
               body: 'Filter by state, metro, county, ZIP, equity %, source. Save the filter. Get an email the moment a new match hits.',
             },
-          ].map(({ step, title, body }) => (
-            <div key={step} className="card p-6 relative overflow-hidden">
+          ].map(({ step, title, body }, i) => (
+            <div
+              key={step}
+              className="card card-hover p-6 relative overflow-hidden animate-fade-in-up"
+              style={{ animationDelay: `${i * 90}ms` }}
+            >
               <div className="absolute -right-6 -top-6 font-display font-extrabold text-7xl text-brand-50 select-none">
                 {step}
               </div>
@@ -146,10 +154,11 @@ export default function Landing() {
               { icon: ShieldCheck,title: 'Code violations',  sub: 'City enforcement' },
               { icon: Wand2,      title: 'Wholesaler',       sub: 'Partner APIs' },
               { icon: SearchIcon, title: 'Motivated seller', sub: 'Stale-DOM heuristic' },
-            ].map(({ icon: Icon, title, sub }) => (
+            ].map(({ icon: Icon, title, sub }, i) => (
               <div
                 key={title}
-                className="card p-4 hover:border-brand-300 hover:shadow-brand transition-all flex items-start gap-3"
+                className="card card-hover p-4 flex items-start gap-3 animate-fade-in-up"
+                style={{ animationDelay: `${i * 50}ms` }}
               >
                 <div className="w-9 h-9 rounded-lg bg-brand-50 text-brand-600 inline-flex items-center justify-center shrink-0">
                   <Icon className="w-4 h-4" />
@@ -180,8 +189,12 @@ export default function Landing() {
             { icon: Database, title: 'Transparent sources', body: 'Every signal links back to its public-record origin. No mystery scoring, no black boxes.' },
             { icon: ShieldCheck, title: 'Compliance-first', body: 'No MLS scraping, no protected-class filtering, no spam. We respect ToS and Fair Housing.' },
             { icon: ArrowRight, title: 'Fair pricing', body: '$29/mo for one metro, $99/mo nationwide. Cancel anytime. No per-lead surcharges.' },
-          ].map(({ icon: Icon, title, body }) => (
-            <div key={title} className="card p-6 hover:border-brand-300 hover:shadow-brand transition-all">
+          ].map(({ icon: Icon, title, body }, i) => (
+            <div
+              key={title}
+              className="card card-hover p-6 animate-fade-in-up"
+              style={{ animationDelay: `${i * 70}ms` }}
+            >
               <div className="w-10 h-10 rounded-full bg-brand-50 text-brand-600 inline-flex items-center justify-center">
                 <Icon className="w-5 h-5" />
               </div>

@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Mail, Plus, Send, Trash2, Loader2, FileText, Megaphone, Target, X } from 'lucide-react';
+import { Mail, Plus, Send, Trash2, FileText, Megaphone, Target, X } from 'lucide-react';
 import Seo from '../components/Seo';
 import PostcardPreview from '../components/PostcardPreview';
 import SendCampaignModal from '../components/SendCampaignModal';
@@ -136,8 +136,23 @@ export default function Mailers() {
         {tab === 'templates' && (
           <div className="mt-6">
             {templates === null && (
-              <div className="card p-12 flex items-center justify-center text-slate-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading templates…
+              <div className="grid lg:grid-cols-2 gap-5">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="card p-5 animate-fade-in"
+                    style={{ animationDelay: `${i * 70}ms` }}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 space-y-2">
+                        <div className="skeleton h-4 w-1/2" />
+                        <div className="skeleton h-3 w-3/4" />
+                      </div>
+                      <div className="skeleton h-7 w-16 rounded-full" />
+                    </div>
+                    <div className="skeleton mt-4 h-40" />
+                  </div>
+                ))}
               </div>
             )}
             {templates && templates.length === 0 && (
@@ -147,8 +162,12 @@ export default function Mailers() {
             )}
             {templates && templates.length > 0 && (
               <div className="grid lg:grid-cols-2 gap-5">
-                {templates.map((t) => (
-                  <div key={t.id} className="card p-5">
+                {templates.map((t, i) => (
+                  <div
+                    key={t.id}
+                    className="card card-hover p-5 animate-fade-in-up"
+                    style={{ animationDelay: `${i * 60}ms` }}
+                  >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex items-center gap-2">
@@ -193,8 +212,23 @@ export default function Mailers() {
         {tab === 'campaigns' && (
           <div className="mt-6">
             {campaigns === null && (
-              <div className="card p-12 flex items-center justify-center text-slate-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading campaigns…
+              <div className="card overflow-hidden">
+                <div className="bg-slate-50 px-4 py-3 flex gap-4 border-b border-slate-100">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="skeleton h-3 flex-1" />
+                  ))}
+                </div>
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="px-4 py-4 flex gap-4 border-b border-slate-100 last:border-0 animate-fade-in"
+                    style={{ animationDelay: `${i * 70}ms` }}
+                  >
+                    {Array.from({ length: 5 }).map((_, j) => (
+                      <div key={j} className="skeleton h-3.5 flex-1" />
+                    ))}
+                  </div>
+                ))}
               </div>
             )}
             {campaigns && campaigns.length === 0 && (

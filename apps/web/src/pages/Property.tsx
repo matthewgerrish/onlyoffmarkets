@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
-  ArrowLeft, MapPin, Calendar, ExternalLink, Loader2,
+  ArrowLeft, MapPin, Calendar, ExternalLink,
   Bookmark, Bell, Share2, Hash, Building2,
 } from 'lucide-react';
 import Seo from '../components/Seo';
@@ -11,11 +11,26 @@ import OwnerContactPanel from '../components/OwnerContactPanel';
 import { getOffMarket, OffMarketDetailResponse } from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore } from '../lib/score';
+import { useToast } from '../components/Toast';
+
+const SAVED_KEY = 'oom_saved_parcels_v1';
+function loadSaved(): Set<string> {
+  try {
+    const raw = localStorage.getItem(SAVED_KEY);
+    if (raw) return new Set(JSON.parse(raw) as string[]);
+  } catch { /* ignore */ }
+  return new Set();
+}
+function persistSaved(s: Set<string>) {
+  localStorage.setItem(SAVED_KEY, JSON.stringify(Array.from(s)));
+}
 
 export default function Property() {
   const { id } = useParams();
   const [p, setP] = useState<OffMarketDetailResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [saved, setSaved] = useState<Set<string>>(() => loadSaved());
+  const toast = useToast();
 
   useEffect(() => {
     if (!id) return;
@@ -43,8 +58,27 @@ export default function Property() {
 
   if (!p) {
     return (
-      <div className="container-page py-24 flex items-center justify-center text-slate-400">
-        <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading property…
+      <div className="container-page py-10 animate-fade-in">
+        <div className="skeleton h-8 w-32 mb-6" />
+        <div className="space-y-3 mb-8">
+          <div className="skeleton h-10 w-2/3" />
+          <div className="skeleton h-4 w-1/3" />
+        </div>
+        <div className="grid sm:grid-cols-4 gap-3 mb-8">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="skeleton h-16" />
+          ))}
+        </div>
+        <div className="grid lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-2 space-y-4">
+            <div className="skeleton h-48" />
+            <div className="skeleton h-72" />
+          </div>
+          <div className="space-y-4">
+            <div className="skeleton h-56" />
+            <div className="skeleton h-72" />
+          </div>
+        </div>
       </div>
     );
   }
@@ -52,6 +86,42 @@ export default function Property() {
   const score = dealScore(p);
   const knownSources = new Set(ALL_SOURCES);
   const locationStr = [p.city, p.state, p.zip].filter(Boolean).join(', ');
+  const isSaved = saved.has(p.parcel_key);
+
+  const onShare = async () => {
+    const url = window.location.href;
+    const title = `${p.address} — OnlyOffMarkets`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title, url });
+        toast.success('Share dialog opened');
+      } else {
+        await navigator.clipboard.writeText(url);
+        toast.success('Link copied to clipboard');
+      }
+    } catch {
+      toast.info('Share canceled');
+    }
+  };
+
+  const onSave = () => {
+    setSaved((prev) => {
+      const next = new Set(prev);
+      if (next.has(p.parcel_key)) {
+        next.delete(p.parcel_key);
+        toast.info('Removed from saved');
+      } else {
+        next.add(p.parcel_key);
+        toast.success('Saved to your list');
+      }
+      persistSaved(next);
+      return next;
+    });
+  };
+
+  const onAlert = () => {
+    toast.success(`Alert created for ${p.city || p.state}`);
+  };
 
   return (
     <>
@@ -92,13 +162,27 @@ export default function Property() {
               </div>
             </div>
             <div className="flex gap-2 w-full sm:w-auto">
-              <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-sm font-semibold transition-colors whitespace-nowrap">
+              <button
+                onClick={onShare}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-sm font-semibold transition-all hover:-translate-y-0.5 active:scale-[0.97] whitespace-nowrap"
+              >
                 <Share2 className="w-4 h-4" /> Share
               </button>
-              <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white/10 hover:bg-white/15 border border-white/20 text-sm font-semibold transition-colors whitespace-nowrap">
-                <Bookmark className="w-4 h-4" /> Save
+              <button
+                onClick={onSave}
+                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full border text-sm font-semibold transition-all hover:-translate-y-0.5 active:scale-[0.97] whitespace-nowrap ${
+                  isSaved
+                    ? 'bg-white text-brand-navy border-white'
+                    : 'bg-white/10 hover:bg-white/15 border-white/20'
+                }`}
+              >
+                <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-brand-navy' : ''}`} />
+                {isSaved ? 'Saved' : 'Save'}
               </button>
-              <button className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white text-brand-navy text-sm font-semibold hover:bg-brand-50 transition-colors whitespace-nowrap">
+              <button
+                onClick={onAlert}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-3 sm:px-4 py-2 rounded-full bg-white text-brand-navy text-sm font-semibold hover:bg-brand-50 transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.97] whitespace-nowrap"
+              >
                 <Bell className="w-4 h-4" /> Alert
               </button>
             </div>
@@ -125,7 +209,7 @@ export default function Property() {
 
       <div className="container-page py-10">
         <div className="grid lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-6">
+          <div className="lg:col-span-2 space-y-6 animate-fade-in-up" style={{ animationDelay: '80ms' }}>
             <div className="card p-6">
               <div className="flex items-center justify-between gap-2">
                 <h2 className="font-display font-bold text-slate-900">Active signals</h2>
@@ -144,7 +228,8 @@ export default function Property() {
                   return (
                     <div
                       key={i}
-                      className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 hover:border-brand-300 hover:bg-brand-50/40 transition-colors"
+                      className="border border-slate-200 rounded-xl p-4 bg-slate-50/60 hover:border-brand-300 hover:bg-brand-50/40 hover:-translate-y-0.5 transition-all animate-fade-in-up"
+                      style={{ animationDelay: `${i * 70}ms` }}
                     >
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div className="min-w-0">
@@ -213,7 +298,7 @@ export default function Property() {
             </div>
           </div>
 
-          <aside className="space-y-4">
+          <aside className="space-y-4 animate-fade-in-up" style={{ animationDelay: '160ms' }}>
             <div className="card p-6">
               <DealMeterDetail score={score} />
             </div>

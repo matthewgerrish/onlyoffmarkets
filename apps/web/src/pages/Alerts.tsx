@@ -3,6 +3,7 @@ import { Bell, Trash2, Plus, MapPin, Filter, Zap, Mail as MailIcon, X } from 'lu
 import Seo from '../components/Seo';
 import { ALL_SOURCES, SOURCE_LABELS } from '../lib/sources';
 import type { ApiSource } from '../lib/api';
+import { useToast } from '../components/Toast';
 
 interface Alert {
   id: string;
@@ -44,6 +45,7 @@ function saveAlerts(alerts: Alert[]) {
 export default function Alerts() {
   const [alerts, setAlerts] = useState<Alert[]>([]);
   const [showForm, setShowForm] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     setAlerts(loadAlerts());
@@ -53,6 +55,7 @@ export default function Alerts() {
     const next = alerts.filter((x) => x.id !== id);
     setAlerts(next);
     saveAlerts(next);
+    toast.info('Alert removed');
   };
 
   const addAlert = (a: Omit<Alert, 'id' | 'created_at'>) => {
@@ -63,6 +66,7 @@ export default function Alerts() {
     setAlerts(next);
     saveAlerts(next);
     setShowForm(false);
+    toast.success(`Alert saved · ${a.cadence} cadence`);
   };
 
   return (

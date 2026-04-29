@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
-  MapPin, Filter, Lock, Loader2, Flame, Send, X,
+  MapPin, Filter, Lock, Flame, Send, X,
   ChevronRight,
 } from 'lucide-react';
 import Seo from '../components/Seo';
@@ -18,6 +18,7 @@ import {
 } from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore, bandHex, bandTextColor, DealScore } from '../lib/score';
+import { useToast } from '../components/Toast';
 
 type SortMode = 'score' | 'newest';
 
@@ -48,6 +49,7 @@ export default function Search() {
   const [filterToBounds, setFilterToBounds] = useState(true);
 
   const nav = useNavigate();
+  const toast = useToast();
 
   useEffect(() => {
     let cancelled = false;
@@ -296,8 +298,21 @@ export default function Search() {
               </div>
             )}
             {rows === null && !error && (
-              <div className="card p-10 flex items-center justify-center text-slate-400">
-                <Loader2 className="w-5 h-5 animate-spin mr-2" /> Loading…
+              <div className="space-y-2.5">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="card p-3 flex items-center gap-3 animate-fade-in"
+                    style={{ animationDelay: `${i * 60}ms` }}
+                  >
+                    <div className="skeleton w-12 h-12 rounded-full" />
+                    <div className="flex-1 space-y-2">
+                      <div className="skeleton h-3 w-20" />
+                      <div className="skeleton h-3.5 w-3/4" />
+                      <div className="skeleton h-3 w-1/2" />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             {rows !== null && inViewport.length === 0 && !error && (
@@ -372,12 +387,20 @@ export default function Search() {
               <span className="text-slate-600">selected</span>
             </div>
             <div className="flex items-center gap-2">
-              <button onClick={() => setSelected(new Set())} className="btn-outline text-sm">
+              <button
+                onClick={() => {
+                  const n = selected.size;
+                  setSelected(new Set());
+                  toast.info(`Cleared ${n} selection${n === 1 ? '' : 's'}`);
+                }}
+                className="btn-outline text-sm"
+              >
                 <X className="w-4 h-4" /> Clear
               </button>
               <button
                 onClick={() => {
                   const keys = Array.from(selected).join(',');
+                  toast.success(`Routing ${selected.size} parcels to mailer flow…`);
                   nav(`/mailers?parcels=${encodeURIComponent(keys)}`);
                 }}
                 className="btn-primary text-sm"
@@ -467,6 +490,11 @@ function ListingCard({
 
 function ScoreBadge({ total, band }: { total: number; band: DealScore['band'] }) {
   const hex = bandHex(band);
+  const [shown, setShown] = useState(0);
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(total));
+    return () => cancelAnimationFrame(id);
+  }, [total]);
   return (
     <div className="relative w-12 h-12 shrink-0">
       <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90">
@@ -479,7 +507,10 @@ function ScoreBadge({ total, band }: { total: number; band: DealScore['band'] })
           strokeWidth="3"
           strokeLinecap="round"
           stroke={hex}
-          style={{ strokeDasharray: `${total} 100`, transition: 'stroke-dasharray 300ms' }}
+          style={{
+            strokeDasharray: `${shown} 100`,
+            transition: 'stroke-dasharray 700ms cubic-bezier(0.16, 1, 0.3, 1)',
+          }}
         />
       </svg>
       <div className={`absolute inset-0 flex items-center justify-center font-display font-extrabold text-sm ${bandTextColor(band)}`}>
@@ -528,10 +559,10 @@ function FiltersDrawer({
 }) {
   return (
     <div className="fixed inset-0 z-40 flex" onClick={onClose}>
-      <div className="flex-1 bg-slate-900/30 backdrop-blur-sm" />
+      <div className="flex-1 bg-slate-900/30 backdrop-blur-sm animate-fade-in" />
       <div
         onClick={(e) => e.stopPropagation()}
-        className="w-full max-w-md bg-white border-l border-slate-200 shadow-2xl h-full overflow-y-auto"
+        className="w-full max-w-md bg-white border-l border-slate-200 shadow-2xl h-full overflow-y-auto animate-slide-in-right"
       >
         <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-5 py-3 flex items-center justify-between">
           <h2 className="font-display font-bold text-slate-900 inline-flex items-center gap-2">

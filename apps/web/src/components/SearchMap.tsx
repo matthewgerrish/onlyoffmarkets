@@ -133,13 +133,11 @@ export default function SearchMap({
         filter: ['!', ['has', 'point_count']],
         paint: {
           'circle-color': ['get', 'color'],
-          'circle-radius': [
-            'case',
-            ['==', ['get', 'parcel_key'], ['literal', '']], 12,  // never matches; fallback
-            12,
-          ],
+          'circle-radius': 12,
+          'circle-radius-transition': { duration: 420, delay: 0 },
           'circle-stroke-color': '#ffffff',
           'circle-stroke-width': 2,
+          'circle-stroke-width-transition': { duration: 220, delay: 0 },
         },
       });
       map.addLayer({
@@ -156,7 +154,7 @@ export default function SearchMap({
         paint: { 'text-color': '#ffffff' },
       });
 
-      // Highlighted (hovered) pin — bigger ring underneath
+      // Highlighted (hovered) pin — bigger pulsing ring underneath
       map.addLayer({
         id: HOVER_LAYER,
         type: 'circle',
@@ -165,8 +163,11 @@ export default function SearchMap({
         paint: {
           'circle-color': 'rgba(0,0,0,0)',
           'circle-radius': 22,
-          'circle-stroke-color': '#0f1f3d',
+          'circle-radius-transition': { duration: 700, delay: 0 },
+          'circle-stroke-color': '#1d6cf2',
           'circle-stroke-width': 3,
+          'circle-stroke-opacity': 0.8,
+          'circle-stroke-opacity-transition': { duration: 700, delay: 0 },
         },
       });
 
@@ -181,7 +182,8 @@ export default function SearchMap({
           map.easeTo({
             center: (features[0].geometry as GeoJSON.Point).coordinates as [number, number],
             zoom,
-            duration: 500,
+            duration: 700,
+            easing: easeInOutCubic,
           });
         });
       });
@@ -262,20 +264,55 @@ export default function SearchMap({
     });
     src.setData({ type: 'FeatureCollection', features });
 
+    // Pin "drop in": shrink to 0 then transition back to full size
+    try {
+      map.setPaintProperty(POINT_LAYER, 'circle-radius', 0);
+      map.setPaintProperty(POINT_LAYER, 'circle-stroke-width', 0);
+      requestAnimationFrame(() => {
+        map.setPaintProperty(POINT_LAYER, 'circle-radius', 12);
+        map.setPaintProperty(POINT_LAYER, 'circle-stroke-width', 2);
+      });
+    } catch {
+      /* layer may not be ready */
+    }
+
     if (geoRows.length > 0) {
       const bounds = new mapboxgl.LngLatBounds();
       for (const r of geoRows) bounds.extend([r.longitude!, r.latitude!]);
       if (!bounds.isEmpty()) {
-        map.fitBounds(bounds as LngLatBoundsLike, { padding: 60, maxZoom: 12, duration: 600 });
+        map.fitBounds(bounds as LngLatBoundsLike, {
+          padding: 60,
+          maxZoom: 12,
+          duration: 900,
+          easing: easeInOutCubic,
+        });
       }
     }
   }, [geoRows, styleReady]);
 
-  // External hover → update HOVER_LAYER filter
+  // External hover → update HOVER_LAYER filter + pulse animation loop
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !styleReady) return;
     map.setFilter(HOVER_LAYER, ['==', ['get', 'parcel_key'], hoveredKey || '']);
+
+    if (!hoveredKey) return;
+    let alive = true;
+    let big = false;
+    const pulse = () => {
+      if (!alive || !mapRef.current) return;
+      big = !big;
+      try {
+        map.setPaintProperty(HOVER_LAYER, 'circle-radius', big ? 30 : 22);
+        map.setPaintProperty(HOVER_LAYER, 'circle-stroke-opacity', big ? 0.25 : 0.85);
+      } catch { /* ignore */ }
+    };
+    pulse();
+    const id = window.setInterval(pulse, 700);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
   }, [hoveredKey, styleReady]);
 
   // Fly-to via Mapbox geocoder (debounced 400ms)
@@ -293,9 +330,21 @@ export default function SearchMap({
           if (!f) return;
           const center = f.center as [number, number];
           if (f.bbox) {
-            map.fitBounds(f.bbox as LngLatBoundsLike, { padding: 60, duration: 600, maxZoom: 12 });
+            map.fitBounds(f.bbox as LngLatBoundsLike, {
+              padding: 60,
+              duration: 1100,
+              maxZoom: 12,
+              easing: easeInOutCubic,
+            });
           } else {
-            map.flyTo({ center, zoom: 12, duration: 600 });
+            map.flyTo({
+              center,
+              zoom: 12,
+              duration: 1100,
+              curve: 1.42,
+              speed: 1.2,
+              easing: easeInOutCubic,
+            });
           }
         })
         .catch(() => {});
@@ -352,6 +401,10 @@ function popupHtml(p: Record<string, string>): string {
         Open property →
       </a>
     </div>`;
+}
+
+function easeInOutCubic(t: number): number {
+  return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
 function escapeHtml(s: string): string {
