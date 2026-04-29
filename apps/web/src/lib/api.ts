@@ -89,3 +89,31 @@ export async function getCoverage(): Promise<CoverageSummary> {
   if (!r.ok) throw new Error(`API ${r.status}`);
   return r.json();
 }
+
+export interface Pin {
+  parcel_key: string;
+  latitude: number;
+  longitude: number;
+  source_tags: ApiSource[];
+  state: string | null;
+  default_amount: number | null;
+  lien_amount: number | null;
+  asking_price: number | null;
+  sale_date: string | null;
+  years_delinquent: number | null;
+  vacancy_months: number | null;
+  owner_state: string | null;
+  estimated_value: number | null;
+  assessed_value: number | null;
+  loan_balance: number | null;
+  last_seen: string;
+}
+
+export async function getPins(params: { state?: string; source?: ApiSource | 'all' } = {}): Promise<{ pins: Pin[]; count: number }> {
+  const url = new URL(`${API_BASE}/off-market/_/pins`);
+  if (params.state) url.searchParams.set('state', params.state);
+  if (params.source && params.source !== 'all') url.searchParams.set('source', params.source);
+  const r = await fetch(url.toString());
+  if (!r.ok) throw new Error(`API ${r.status}`);
+  return r.json();
+}

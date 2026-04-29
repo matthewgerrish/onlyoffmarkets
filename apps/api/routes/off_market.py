@@ -111,6 +111,84 @@ async def coverage_summary() -> dict:
     return payload
 
 
+@router.get("/_/pins")
+async def all_pins(
+    state: str | None = Query(None, min_length=2, max_length=2),
+    source: SOURCE_TYPES = "all",
+) -> dict:
+    """Lightweight pin payload for the map — every parcel with coordinates.
+
+    Returns only the fields needed to render a marker (parcel_key, lat,
+    lng, score-driving fields). Cached for 5 min. Up to 10k pins.
+    """
+    cache_key = f"off-market:pins:{state or 'any'}:{source}"
+    cached = await cache.get_json(cache_key)
+    if cached:
+        return cached
+
+    from storage.off_market_db import _conn, _ph
+    with _conn() as (cur, dialect):
+        ph = _ph(dialect)
+        clauses = ["latitude IS NOT NULL", "longitude IS NOT NULL"]
+        params: list = []
+        if state:
+            clauses.append(f"state = {ph}")
+            params.append(state.upper())
+        if source != "all":
+            if dialect == "pg":
+                clauses.append(f"source_tags @> {ph}::jsonb")
+                import json as _json
+                params.append(_json.dumps([source]))
+            else:
+                clauses.append(f"source_tags LIKE {ph}")
+                params.append(f'%"{source}"%')
+        where = "WHERE " + " AND ".join(clauses)
+
+        cur.execute(
+            f"SELECT parcel_key, latitude, longitude, source_tags, "
+            f"default_amount, lien_amount, asking_price, sale_date, "
+            f"years_delinquent, vacancy_months, owner_state, state, "
+            f"estimated_value, assessed_value, loan_balance, last_seen "
+            f"FROM off_market_listings {where} LIMIT 10000",
+            tuple(params),
+        )
+        rows = cur.fetchall()
+
+        out = []
+        import json as _json2
+        for r in rows:
+            if dialect == "pg":
+                cols = [c.name for c in cur.description]
+                d = dict(zip(cols, r))
+            else:
+                d = dict(r)
+            tags = d.get("source_tags")
+            if isinstance(tags, str):
+                tags = _json2.loads(tags)
+            out.append({
+                "parcel_key": d["parcel_key"],
+                "latitude": d["latitude"],
+                "longitude": d["longitude"],
+                "source_tags": tags or [],
+                "state": d.get("state"),
+                "default_amount": d.get("default_amount"),
+                "lien_amount": d.get("lien_amount"),
+                "asking_price": d.get("asking_price"),
+                "sale_date": str(d["sale_date"]) if d.get("sale_date") else None,
+                "years_delinquent": d.get("years_delinquent"),
+                "vacancy_months": d.get("vacancy_months"),
+                "owner_state": d.get("owner_state"),
+                "estimated_value": d.get("estimated_value"),
+                "assessed_value": d.get("assessed_value"),
+                "loan_balance": d.get("loan_balance"),
+                "last_seen": str(d["last_seen"]) if d.get("last_seen") else None,
+            })
+
+    payload = {"pins": out, "count": len(out)}
+    await cache.set_json(cache_key, 300, payload)
+    return payload
+
+
 @router.get("/{parcel_key}")
 async def get_off_market(parcel_key: str) -> dict:
     row = get_one(parcel_key)

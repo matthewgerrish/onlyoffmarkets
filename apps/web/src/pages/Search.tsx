@@ -7,7 +7,7 @@ import {
 import Seo from '../components/Seo';
 import SearchMap from '../components/SearchMap';
 import SmartSearch from '../components/SmartSearch';
-import { listOffMarket, OffMarketRow, ApiSource } from '../lib/api';
+import { listOffMarket, getPins, OffMarketRow, ApiSource, Pin } from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore, bandHex, bandTextColor, DealScore } from '../lib/score';
 
@@ -15,6 +15,7 @@ type SortMode = 'score' | 'newest';
 
 export default function Search() {
   const [rows, setRows] = useState<OffMarketRow[] | null>(null);
+  const [pins, setPins] = useState<Pin[]>([]);
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +45,10 @@ export default function Search() {
         setCounts(data.counts);
       })
       .catch((e: Error) => !cancelled && setError(e.message));
+    // Fetch all pins separately so the map shows every state we cover
+    getPins({ state: state || undefined })
+      .then((d) => !cancelled && setPins(d.pins))
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [state]);
 
@@ -74,6 +79,45 @@ export default function Search() {
       return row.longitude >= w && row.longitude <= e && row.latitude >= s && row.latitude <= n;
     });
   }, [filtered, bounds, filterToBounds]);
+
+  // Pins for the map: every parcel with coordinates, filtered by score + sources
+  const pinsAsRows = useMemo<OffMarketRow[]>(() => {
+    return pins
+      .filter((p) => p.source_tags.some((t) => enabledSources.has(t)))
+      .map<OffMarketRow>((p) => ({
+        parcel_key: p.parcel_key,
+        parcel_apn: null,
+        address: '',
+        city: null,
+        county: null,
+        state: p.state ?? '',
+        zip: null,
+        source_tags: p.source_tags,
+        default_amount: p.default_amount,
+        sale_date: p.sale_date,
+        asking_price: p.asking_price,
+        lien_amount: p.lien_amount,
+        years_delinquent: p.years_delinquent,
+        vacancy_months: p.vacancy_months,
+        owner_state: p.owner_state,
+        owner_name: null,
+        latitude: p.latitude,
+        longitude: p.longitude,
+        estimated_value: p.estimated_value,
+        assessed_value: p.assessed_value,
+        loan_balance: p.loan_balance,
+        estimated_equity: null,
+        spread_pct: null,
+        adu_ready: 0,
+        adu_score: 0,
+        first_seen: p.last_seen,
+        last_seen: p.last_seen,
+      }))
+      .filter((r) => {
+        const score = dealScore(r);
+        return score.total >= minScore;
+      });
+  }, [pins, enabledSources, minScore]);
 
   const toggleSource = (s: ApiSource) => {
     setEnabledSources((prev) => {
@@ -111,7 +155,7 @@ export default function Search() {
         {/* Map column */}
         <div className="relative bg-slate-100 min-h-[400px]">
           <SearchMap
-            rows={inViewport.map((f) => f.row)}
+            rows={pinsAsRows}
             hoveredKey={hoveredKey}
             onPinHover={setHoveredKey}
             onPinClick={(k) => nav(`/property/${encodeURIComponent(k)}`)}
@@ -168,9 +212,7 @@ export default function Search() {
               <p className="text-xs text-slate-500 mt-0.5">
                 {rows === null
                   ? 'Loading…'
-                  : `${inViewport.length} result${inViewport.length === 1 ? '' : 's'}${
-                      filtered.length !== inViewport.length ? ` of ${filtered.length}` : ''
-                    }`}
+                  : `${inViewport.length} of ${pinsAsRows.length} mapped`}
               </p>
             </div>
             <div className="flex bg-slate-100 rounded-full p-0.5 text-[11px] font-semibold">
