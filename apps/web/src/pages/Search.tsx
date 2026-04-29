@@ -2,10 +2,11 @@ import { useEffect, useMemo, useState, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   MapPin, Filter, Lock, Loader2, Flame, Send, X,
-  Search as SearchIcon, ChevronRight,
+  ChevronRight,
 } from 'lucide-react';
 import Seo from '../components/Seo';
 import SearchMap from '../components/SearchMap';
+import SmartSearch from '../components/SmartSearch';
 import { listOffMarket, OffMarketRow, ApiSource } from '../lib/api';
 import { SOURCE_LABELS, ALL_SOURCES } from '../lib/sources';
 import { dealScore, bandHex, bandTextColor, DealScore } from '../lib/score';
@@ -120,24 +121,16 @@ export default function Search() {
             inset
           />
 
-          {/* Floating address search top-left */}
-          <div className="absolute top-3 left-3 z-10 flex items-center bg-white rounded-full shadow-md border border-slate-200 px-3 py-2 w-[280px] sm:w-[320px]">
-            <SearchIcon className="w-4 h-4 text-slate-400 shrink-0" />
-            <input
-              value={addressQuery}
-              onChange={(e) => setAddressQuery(e.target.value)}
-              placeholder="Search city, ZIP, or state…"
-              className="flex-1 bg-transparent border-0 outline-none text-sm text-slate-900 placeholder:text-slate-400 ml-2"
+          {/* Floating smart-search top-left */}
+          <div className="absolute top-3 left-3 z-10">
+            <SmartSearch
+              onSelect={(sel) => {
+                if (sel.state !== undefined) setState(sel.state || '');
+                if (sel.query) setAddressQuery(sel.query);
+                else if (sel.zip) setAddressQuery(sel.zip);
+                else if (sel.city) setAddressQuery(sel.city);
+              }}
             />
-            {addressQuery && (
-              <button
-                onClick={() => setAddressQuery('')}
-                aria-label="Clear search"
-                className="text-slate-400 hover:text-slate-700"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
           </div>
 
           {/* Filter chips bar top-center */}

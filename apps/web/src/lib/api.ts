@@ -81,6 +81,7 @@ export interface CoverageSummary {
   by_source: Record<string, number>;
   by_state: Record<string, number>;
   states_covered: number;
+  top_cities?: { city: string; state: string; count: number }[];
 }
 
 export async function getCoverage(): Promise<CoverageSummary> {

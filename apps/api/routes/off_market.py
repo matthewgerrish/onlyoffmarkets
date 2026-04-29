@@ -77,25 +77,35 @@ async def coverage_summary() -> dict:
         return cached
 
     counts = source_counts()
-    # Per-state breakdown via a separate single-pass query
-    from storage.off_market_db import _conn, _ph
+    # Single-pass groupings
+    from storage.off_market_db import _conn
     with _conn() as (cur, dialect):
         cur.execute(
             "SELECT state, count(*) FROM off_market_listings WHERE state IS NOT NULL GROUP BY state ORDER BY count(*) DESC LIMIT 60"
         )
         states_rows = cur.fetchall()
-    by_state = {}
-    for row in states_rows:
-        if dialect == "pg":
-            by_state[row[0]] = row[1]
-        else:
-            by_state[row["state"]] = row["count(*)"]
+        cur.execute(
+            "SELECT city, state, count(*) FROM off_market_listings "
+            "WHERE city IS NOT NULL AND state IS NOT NULL "
+            "GROUP BY city, state ORDER BY count(*) DESC LIMIT 80"
+        )
+        city_rows = cur.fetchall()
+
+    def _g(row, idx, key):
+        return row[idx] if dialect == "pg" else row[key]
+
+    by_state = {_g(r, 0, "state"): _g(r, 1, "count(*)") for r in states_rows}
+    top_cities = [
+        {"city": _g(r, 0, "city"), "state": _g(r, 1, "state"), "count": _g(r, 2, "count(*)")}
+        for r in city_rows
+    ]
 
     payload = {
         "total_parcels":  counts["all"],
         "by_source":      {k: v for k, v in counts.items() if k != "all"},
         "by_state":       by_state,
         "states_covered": len(by_state),
+        "top_cities":     top_cities,
     }
     await cache.set_json("off-market:coverage", 600, payload)
     return payload
