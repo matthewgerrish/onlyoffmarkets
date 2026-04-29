@@ -149,26 +149,33 @@ _MIGRATION_TARGETS: list[tuple[str, str]] = [
 def migrate_user_id(old_id: str, new_id: str) -> int:
     """Rewrite all FKs from old_id → new_id. Returns total rows updated.
 
-    Used when a localStorage user signs in with email for the first time:
-    their UUID-keyed wallet + plan migrate to the email-keyed user.
-    Resolves PK collisions on user_memberships / user_tokens by merging
-    the rows (sum balances, prefer the most-recently-active membership).
+    Each table runs in its own connection: Postgres aborts an entire
+    transaction the moment one statement errors (e.g. "relation does
+    not exist"), which would silently roll back earlier successful
+    UPDATEs. Splitting each step keeps one missing table from
+    nuking the rest of the migration.
     """
     if not old_id or not new_id or old_id == new_id:
         return 0
     total = 0
-    with _conn() as (cur, dialect):
-        ph = _ph(dialect)
 
-        # 1) user_tokens — sum balances if both rows exist.
-        try:
-            cur.execute(f"SELECT balance, lifetime_purchased, lifetime_spent FROM user_tokens WHERE user_id = {ph}", (old_id,))
+    # 1) user_tokens — sum balances if both rows exist.
+    try:
+        with _conn() as (cur, dialect):
+            ph = _ph(dialect)
+            cur.execute(
+                f"SELECT balance, lifetime_purchased, lifetime_spent FROM user_tokens WHERE user_id = {ph}",
+                (old_id,),
+            )
             old = cur.fetchone()
             if old:
                 old_bal = int(old[0] if not isinstance(old, dict) else old["balance"])
                 old_lp = int(old[1] if not isinstance(old, dict) else old["lifetime_purchased"])
                 old_ls = int(old[2] if not isinstance(old, dict) else old["lifetime_spent"])
-                cur.execute(f"SELECT balance, lifetime_purchased, lifetime_spent FROM user_tokens WHERE user_id = {ph}", (new_id,))
+                cur.execute(
+                    f"SELECT balance, lifetime_purchased, lifetime_spent FROM user_tokens WHERE user_id = {ph}",
+                    (new_id,),
+                )
                 new = cur.fetchone()
                 if new:
                     new_bal = int(new[0] if not isinstance(new, dict) else new["balance"])
@@ -184,11 +191,14 @@ def migrate_user_id(old_id: str, new_id: str) -> int:
                 else:
                     cur.execute(f"UPDATE user_tokens SET user_id = {ph} WHERE user_id = {ph}", (new_id, old_id))
                 total += 1
-        except Exception as exc:
-            log.warning("migrate user_tokens failed: %s", exc)
+                log.info("migrated user_tokens %s → %s", old_id, new_id)
+    except Exception as exc:
+        log.warning("migrate user_tokens failed: %s", exc)
 
-        # 2) user_memberships — prefer the paid plan, drop the free one.
-        try:
+    # 2) user_memberships — prefer the paid plan, drop the free one.
+    try:
+        with _conn() as (cur, dialect):
+            ph = _ph(dialect)
             cur.execute(f"SELECT plan, status FROM user_memberships WHERE user_id = {ph}", (old_id,))
             old = cur.fetchone()
             cur.execute(f"SELECT plan, status FROM user_memberships WHERE user_id = {ph}", (new_id,))
@@ -198,30 +208,41 @@ def migrate_user_id(old_id: str, new_id: str) -> int:
                 new_plan = new[0] if not isinstance(new, dict) else new["plan"]
                 rank = {"free": 0, "standard": 1, "premium": 2}
                 if rank.get(old_plan, 0) > rank.get(new_plan, 0):
-                    # Promote to old plan, then delete the old row.
                     cur.execute(f"DELETE FROM user_memberships WHERE user_id = {ph}", (new_id,))
                     cur.execute(f"UPDATE user_memberships SET user_id = {ph} WHERE user_id = {ph}", (new_id, old_id))
+                    log.info("migrated user_memberships (promoted %s) %s → %s", old_plan, old_id, new_id)
+                    total += 1
                 else:
                     cur.execute(f"DELETE FROM user_memberships WHERE user_id = {ph}", (old_id,))
+                    log.info("migrate user_memberships kept new (%s vs %s)", new_plan, old_plan)
             elif old and not new:
                 cur.execute(f"UPDATE user_memberships SET user_id = {ph} WHERE user_id = {ph}", (new_id, old_id))
-            total += 1
-        except Exception as exc:
-            log.warning("migrate user_memberships failed: %s", exc)
+                log.info("migrated user_memberships (rename) %s → %s", old_id, new_id)
+                total += 1
+    except Exception as exc:
+        log.warning("migrate user_memberships failed: %s", exc)
 
-        # 3) Append-only ledger tables — straight rename.
-        for table, col in (("token_transactions", "user_id"), ("skip_trace_usage", "user_id")):
-            try:
-                cur.execute(f"UPDATE {table} SET {col} = {ph} WHERE {col} = {ph}", (new_id, old_id))
-                total += cur.rowcount or 0
-            except Exception as exc:
-                log.warning("migrate %s failed: %s", table, exc)
-
-        # 4) Drop the legacy users row.
+    # 3) Append-only ledger tables — straight rename, each in its own
+    #    transaction so a missing table can't poison the others.
+    for table, col in (("token_transactions", "user_id"), ("skip_trace_usage", "user_id")):
         try:
-            cur.execute(f"DELETE FROM users WHERE id = {ph}", (old_id,))
+            with _conn() as (cur, dialect):
+                ph = _ph(dialect)
+                cur.execute(f"UPDATE {table} SET {col} = {ph} WHERE {col} = {ph}", (new_id, old_id))
+                rc = cur.rowcount or 0
+                if rc > 0:
+                    log.info("migrated %s rows %d (%s → %s)", table, rc, old_id, new_id)
+                total += rc
         except Exception as exc:
-            log.warning("delete legacy users row failed: %s", exc)
+            log.warning("migrate %s failed: %s", table, exc)
+
+    # 4) Drop the legacy users row.
+    try:
+        with _conn() as (cur, dialect):
+            ph = _ph(dialect)
+            cur.execute(f"DELETE FROM users WHERE id = {ph}", (old_id,))
+    except Exception as exc:
+        log.warning("delete legacy users row failed: %s", exc)
 
     log.info("migrated user %s → %s (%d affected rows)", old_id, new_id, total)
     return total

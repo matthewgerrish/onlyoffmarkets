@@ -159,3 +159,29 @@ async def logout() -> dict:
     # JWTs are stateless — server-side logout is a no-op. Frontend
     # drops the token from localStorage on its own.
     return {"ok": True}
+
+
+class ClaimAnonIn(BaseModel):
+    anon_user_id: str
+
+
+@router.post("/claim-anon")
+async def claim_anon(
+    body: ClaimAnonIn,
+    authorization: str | None = Header(default=None, alias="Authorization"),
+) -> dict:
+    """Re-run the anon → email migration after sign-in.
+
+    Use case: a previous sign-in attempt's migration failed (eg. a
+    poisoned-transaction bug, or the user signed in from a fresh
+    browser and we want to claim their old anon device's wallet).
+
+    Auth required. The authed user_id becomes the migration target.
+    """
+    payload = _resolve_user(authorization)
+    target_user_id = payload["sub"]
+    anon = (body.anon_user_id or "").strip()[:64]
+    if not anon or anon == target_user_id:
+        raise HTTPException(400, "anon_user_id required and must differ from current user")
+    n = users_db.migrate_user_id(anon, target_user_id)
+    return {"ok": True, "migrated_rows": n, "from": anon, "to": target_user_id}
