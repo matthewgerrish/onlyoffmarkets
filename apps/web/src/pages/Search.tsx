@@ -9,6 +9,7 @@ import SearchMap from '../components/SearchMap';
 import SmartSearch from '../components/SmartSearch';
 import BrowseStates from '../components/BrowseStates';
 import PropertyTypePicker from '../components/PropertyTypePicker';
+import PriceRange from '../components/PriceRange';
 import {
   listOffMarket, getPins, getCoverage,
   OffMarketRow, ApiSource, Pin, PropertyType, CoverageSummary,
@@ -26,6 +27,7 @@ export default function Search() {
 
   const [state, setState] = useState<string>('');
   const [propertyType, setPropertyType] = useState<PropertyType | ''>('');
+  const [priceRange, setPriceRange] = useState<{ min: number | null; max: number | null }>({ min: null, max: null });
   const [enabledSources, setEnabledSources] = useState<Set<ApiSource>>(new Set(ALL_SOURCES));
   const [minScore, setMinScore] = useState<number>(0);
   const [coverage, setCoverage] = useState<CoverageSummary | null>(null);
@@ -48,6 +50,8 @@ export default function Search() {
     listOffMarket({
       state: state || undefined,
       property_type: propertyType || undefined,
+      min_value: priceRange.min ?? undefined,
+      max_value: priceRange.max ?? undefined,
       limit: 300,
     })
       .then((data) => {
@@ -60,11 +64,13 @@ export default function Search() {
     getPins({
       state: state || undefined,
       property_type: propertyType || undefined,
+      min_value: priceRange.min ?? undefined,
+      max_value: priceRange.max ?? undefined,
     })
       .then((d) => !cancelled && setPins(d.pins))
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [state, propertyType]);
+  }, [state, propertyType, priceRange.min, priceRange.max]);
 
   // Fetch coverage once for filter counts + browse states
   useEffect(() => {
@@ -166,7 +172,12 @@ export default function Search() {
     }
   }, [hoveredKey]);
 
-  const filterChipsActive = (state ? 1 : 0) + (minScore > 0 ? 1 : 0) + (enabledSources.size < ALL_SOURCES.length ? 1 : 0);
+  const filterChipsActive =
+    (state ? 1 : 0) +
+    (minScore > 0 ? 1 : 0) +
+    (enabledSources.size < ALL_SOURCES.length ? 1 : 0) +
+    (propertyType ? 1 : 0) +
+    ((priceRange.min !== null || priceRange.max !== null) ? 1 : 0);
 
   return (
     <>
@@ -316,6 +327,8 @@ export default function Search() {
           setState={setState}
           minScore={minScore}
           setMinScore={setMinScore}
+          priceRange={priceRange}
+          setPriceRange={setPriceRange}
           enabledSources={enabledSources}
           toggleSource={toggleSource}
           counts={counts}
@@ -324,6 +337,7 @@ export default function Search() {
           onClearAll={() => {
             setState('');
             setMinScore(0);
+            setPriceRange({ min: null, max: null });
             setEnabledSources(new Set(ALL_SOURCES));
           }}
         />
@@ -462,6 +476,8 @@ function FiltersDrawer({
   setState,
   minScore,
   setMinScore,
+  priceRange,
+  setPriceRange,
   enabledSources,
   toggleSource,
   counts,
@@ -473,6 +489,8 @@ function FiltersDrawer({
   setState: (s: string) => void;
   minScore: number;
   setMinScore: (n: number) => void;
+  priceRange: { min: number | null; max: number | null };
+  setPriceRange: (v: { min: number | null; max: number | null }) => void;
   enabledSources: Set<ApiSource>;
   toggleSource: (s: ApiSource) => void;
   counts: Record<string, number>;
@@ -533,6 +551,14 @@ function FiltersDrawer({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-2">Price range</label>
+            <PriceRange value={priceRange} onChange={setPriceRange} />
+            <p className="text-[11px] text-slate-500 mt-2">
+              Best price per parcel — asking price preferred, else AVM, else assessed value.
+            </p>
           </div>
 
           <div>

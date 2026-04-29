@@ -37,9 +37,14 @@ async def list_off_market(
     state: str | None = Query(None, min_length=2, max_length=2, description="Two-letter state code"),
     county: str | None = None,
     property_type: str | None = Query(None, description="single_family|condo|townhome|multi_family|land|commercial|manufactured|other"),
+    min_value: int | None = Query(None, ge=0),
+    max_value: int | None = Query(None, ge=0),
     limit: int = Query(60, ge=1, le=300),
 ) -> dict:
-    cache_key = f"off-market:list:{source}:{state or 'any'}:{county or 'any'}:{property_type or 'any'}:{limit}"
+    cache_key = (
+        f"off-market:list:{source}:{state or 'any'}:{county or 'any'}:"
+        f"{property_type or 'any'}:{min_value or 0}:{max_value or 0}:{limit}"
+    )
     cached = await cache.get_json(cache_key)
     if cached:
         return cached
@@ -49,6 +54,8 @@ async def list_off_market(
         county=county,
         source=None if source == "all" else source,
         property_type=property_type,
+        min_value=min_value,
+        max_value=max_value,
         limit=limit,
     )
 
@@ -126,13 +133,18 @@ async def all_pins(
     state: str | None = Query(None, min_length=2, max_length=2),
     source: SOURCE_TYPES = "all",
     property_type: str | None = Query(None),
+    min_value: int | None = Query(None, ge=0),
+    max_value: int | None = Query(None, ge=0),
 ) -> dict:
     """Lightweight pin payload for the map — every parcel with coordinates.
 
     Returns only the fields needed to render a marker (parcel_key, lat,
     lng, score-driving fields). Cached for 5 min. Up to 10k pins.
     """
-    cache_key = f"off-market:pins:{state or 'any'}:{source}:{property_type or 'any'}"
+    cache_key = (
+        f"off-market:pins:{state or 'any'}:{source}:{property_type or 'any'}:"
+        f"{min_value or 0}:{max_value or 0}"
+    )
     cached = await cache.get_json(cache_key)
     if cached:
         return cached
@@ -148,6 +160,12 @@ async def all_pins(
         if property_type:
             clauses.append(f"property_type = {ph}")
             params.append(property_type)
+        if min_value is not None:
+            clauses.append(f"COALESCE(asking_price, estimated_value, assessed_value) >= {ph}")
+            params.append(min_value)
+        if max_value is not None:
+            clauses.append(f"COALESCE(asking_price, estimated_value, assessed_value) <= {ph}")
+            params.append(max_value)
         if source != "all":
             if dialect == "pg":
                 clauses.append(f"source_tags @> {ph}::jsonb")

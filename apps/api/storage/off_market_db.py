@@ -325,9 +325,15 @@ def query(
     county: str | None = None,
     source: str | None = None,
     property_type: str | None = None,
+    min_value: int | None = None,
+    max_value: int | None = None,
     limit: int = 100,
 ) -> list[dict]:
-    """Cheap fetch for the API — returns the canonical records, newest first."""
+    """Cheap fetch for the API — returns the canonical records, newest first.
+
+    `min_value` / `max_value` apply to the best price we have on each parcel:
+    asking_price preferred, else estimated_value (AVM), else assessed_value.
+    """
     with _conn() as (cur, dialect):
         ph = _ph(dialect)
         clauses: list[str] = []
@@ -342,6 +348,12 @@ def query(
         if property_type:
             clauses.append(f"property_type = {ph}")
             params.append(property_type)
+        if min_value is not None:
+            clauses.append(f"COALESCE(asking_price, estimated_value, assessed_value) >= {ph}")
+            params.append(min_value)
+        if max_value is not None:
+            clauses.append(f"COALESCE(asking_price, estimated_value, assessed_value) <= {ph}")
+            params.append(max_value)
         if source:
             if dialect == "pg":
                 clauses.append(f"source_tags @> {ph}::jsonb")

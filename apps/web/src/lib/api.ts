@@ -61,6 +61,8 @@ interface ListParams {
   state?: string;
   county?: string;
   property_type?: PropertyType;
+  min_value?: number;
+  max_value?: number;
   limit?: number;
 }
 
@@ -70,6 +72,8 @@ export async function listOffMarket(params: ListParams = {}): Promise<OffMarketL
   if (params.state) url.searchParams.set('state', params.state);
   if (params.county) url.searchParams.set('county', params.county);
   if (params.property_type) url.searchParams.set('property_type', params.property_type);
+  if (typeof params.min_value === 'number') url.searchParams.set('min_value', String(params.min_value));
+  if (typeof params.max_value === 'number') url.searchParams.set('max_value', String(params.max_value));
   if (params.limit) url.searchParams.set('limit', String(params.limit));
 
   const r = await fetch(url.toString());
@@ -119,12 +123,20 @@ export interface Pin {
 }
 
 export async function getPins(
-  params: { state?: string; source?: ApiSource | 'all'; property_type?: PropertyType } = {}
+  params: {
+    state?: string;
+    source?: ApiSource | 'all';
+    property_type?: PropertyType;
+    min_value?: number;
+    max_value?: number;
+  } = {}
 ): Promise<{ pins: Pin[]; count: number }> {
   const url = new URL(`${API_BASE}/off-market/_/pins`);
   if (params.state) url.searchParams.set('state', params.state);
   if (params.source && params.source !== 'all') url.searchParams.set('source', params.source);
   if (params.property_type) url.searchParams.set('property_type', params.property_type);
+  if (typeof params.min_value === 'number') url.searchParams.set('min_value', String(params.min_value));
+  if (typeof params.max_value === 'number') url.searchParams.set('max_value', String(params.max_value));
   const r = await fetch(url.toString());
   if (!r.ok) throw new Error(`API ${r.status}`);
   return r.json();
