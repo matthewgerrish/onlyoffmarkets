@@ -139,28 +139,41 @@ async def confirm_session(
         log.warning("confirm-session retrieve failed: %s", exc)
         raise HTTPException(404, "Session not found")
 
-    if s.get("payment_status") not in ("paid", "no_payment_required"):
-        return {"ok": False, "payment_status": s.get("payment_status")}
+    def _attr(obj, name, default=None):
+        if hasattr(obj, name):
+            return getattr(obj, name) or default
+        try:
+            return obj[name]
+        except Exception:
+            return default
 
-    metadata = s.get("metadata") or {}
-    if metadata.get("user_id") and metadata["user_id"] != user_id:
-        # Session belongs to a different user — refuse to reconcile.
+    if _attr(s, "payment_status") not in ("paid", "no_payment_required"):
+        return {"ok": False, "payment_status": _attr(s, "payment_status")}
+
+    metadata = _attr(s, "metadata", {}) or {}
+    md_user = metadata.get("user_id") if hasattr(metadata, "get") else _attr(metadata, "user_id")
+    if md_user and md_user != user_id:
         raise HTTPException(403, "Session belongs to a different user")
 
-    kind = metadata.get("kind")
+    kind = metadata.get("kind") if hasattr(metadata, "get") else _attr(metadata, "kind")
+    def _md(name, default=None):
+        if hasattr(metadata, "get"):
+            return metadata.get(name, default)
+        return _attr(metadata, name, default)
+
     if kind == "tokens":
-        pack_id = metadata.get("pack_id") or "starter"
+        pack_id = _md("pack_id") or "starter"
         try:
             pkg = tokens_pricing.get_package(pack_id)
         except ValueError:
             raise HTTPException(400, "Unknown pack")
-        bonus_pct = int(metadata.get("bonus_pct") or 0)
+        bonus_pct = int(_md("bonus_pct") or 0)
         bonus_tokens = pkg["tokens"] * bonus_pct // 100
         total = pkg["tokens"] + bonus_tokens
-        # Idempotency: refuse double-credit by checking a marker note.
         marker = f"session:{session_id}"
         existing = tokens_db.transactions(user_id, limit=200)
-        if any((tx.get("note") or "").endswith(marker) for tx in existing):
+        if any((tx.get("note") or "").endswith(marker + "]") or marker in (tx.get("note") or "")
+               for tx in existing):
             return {"ok": True, "already_credited": True}
         tokens_db.credit(
             user_id, total,
@@ -171,12 +184,12 @@ async def confirm_session(
         return {"ok": True, "credited": total, "bonus": bonus_tokens}
 
     if kind == "membership":
-        plan = metadata.get("plan", "standard")
+        plan = _md("plan") or "standard"
         memberships_db.set_plan(
             user_id, plan,
             status="active",
-            stripe_customer_id=s.get("customer"),
-            stripe_subscription_id=s.get("subscription"),
+            stripe_customer_id=_attr(s, "customer"),
+            stripe_subscription_id=_attr(s, "subscription"),
         )
         return {"ok": True, "plan": plan}
 
@@ -195,38 +208,53 @@ async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
     stripe.api_key = stripe_client.STRIPE_SECRET
     out: dict = {"user_id": user_id, "membership_row": memberships_db.get(user_id)}
 
+    def _attr(obj, name, default=None):
+        # Works for both StripeObject and plain dict.
+        if hasattr(obj, name):
+            return getattr(obj, name) or default
+        try:
+            return obj[name]
+        except Exception:
+            return default
+
     sessions: list[dict] = []
     try:
-        ses_list = stripe.checkout.Session.list(limit=20)
-        for s in ses_list.get("data") or []:
+        for s in stripe.checkout.Session.list(limit=20).auto_paging_iter():
+            md = _attr(s, "metadata", {}) or {}
             sessions.append({
-                "id": s.get("id"),
-                "client_reference_id": s.get("client_reference_id"),
-                "payment_status": s.get("payment_status"),
-                "mode": s.get("mode"),
-                "subscription": s.get("subscription"),
-                "customer": s.get("customer"),
-                "metadata": s.get("metadata") or {},
-                "created": s.get("created"),
+                "id": _attr(s, "id"),
+                "client_reference_id": _attr(s, "client_reference_id"),
+                "payment_status": _attr(s, "payment_status"),
+                "mode": _attr(s, "mode"),
+                "subscription": _attr(s, "subscription"),
+                "customer": _attr(s, "customer"),
+                "metadata": dict(md) if md else {},
+                "created": _attr(s, "created"),
             })
+            if len(sessions) >= 20:
+                break
     except Exception as exc:
-        out["sessions_error"] = str(exc)
+        log.exception("debug_me sessions list failed")
+        out["sessions_error"] = f"{type(exc).__name__}: {exc}"
     out["all_recent_sessions"] = sessions
-    out["my_sessions"] = [s for s in sessions if s.get("client_reference_id") == user_id]
+    out["my_sessions"] = [s for s in sessions if s["client_reference_id"] == user_id]
 
     subs: list[dict] = []
     try:
-        sub_list = stripe.Subscription.list(status="all", limit=20)
-        for s in sub_list.get("data") or []:
+        for s in stripe.Subscription.list(status="all", limit=20).auto_paging_iter():
+            md = _attr(s, "metadata", {}) or {}
             subs.append({
-                "id": s.get("id"),
-                "status": s.get("status"),
-                "customer": s.get("customer"),
-                "metadata": s.get("metadata") or {},
-                "created": s.get("created"),
+                "id": _attr(s, "id"),
+                "status": _attr(s, "status"),
+                "customer": _attr(s, "customer"),
+                "metadata": dict(md) if md else {},
+                "created": _attr(s, "created"),
             })
+            if len(subs) >= 20:
+                break
     except Exception as exc:
-        out["subs_error"] = str(exc)
+        log.exception("debug_me subs list failed")
+        out["subs_error"] = f"{type(exc).__name__}: {exc}"
     out["all_recent_subscriptions"] = subs
     out["my_subscriptions"] = [s for s in subs if (s.get("metadata") or {}).get("user_id") == user_id]
 
@@ -255,23 +283,29 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
     cust_id = row.get("stripe_customer_id")
     sub: dict | None = None
 
+    def _attr(obj, name, default=None):
+        if hasattr(obj, name):
+            return getattr(obj, name) or default
+        try:
+            return obj[name]
+        except Exception:
+            return default
+
     if cust_id and not str(cust_id).startswith("mock_"):
         try:
-            subs = stripe.Subscription.list(customer=cust_id, status="active", limit=5)
-            data = subs.get("data") or []
-            if data:
-                sub = dict(data[0])
+            for s in stripe.Subscription.list(customer=cust_id, status="active", limit=5).auto_paging_iter():
+                sub = s
+                break
         except Exception as exc:
             log.warning("sync stripe.Subscription.list(customer=) failed: %s", exc)
 
     # 2) Fall back to scanning recent active subs across the whole account.
     if not sub:
         try:
-            subs = stripe.Subscription.list(status="active", limit=20)
-            for s in subs.get("data") or []:
-                md = s.get("metadata") or {}
-                if md.get("user_id") == user_id:
-                    sub = dict(s)
+            for s in stripe.Subscription.list(status="active", limit=20).auto_paging_iter():
+                md = _attr(s, "metadata", {}) or {}
+                if (md.get("user_id") if hasattr(md, "get") else None) == user_id or _attr(md, "user_id") == user_id:
+                    sub = s
                     break
         except Exception as exc:
             log.warning("sync stripe.Subscription.list() failed: %s", exc)
@@ -280,17 +314,16 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
     #    metadata since we explicitly set client_reference_id = user_id.
     if not sub:
         try:
-            sessions = stripe.checkout.Session.list(limit=20)
-            for ses in sessions.get("data") or []:
-                if ses.get("client_reference_id") != user_id:
+            for ses in stripe.checkout.Session.list(limit=20).auto_paging_iter():
+                if _attr(ses, "client_reference_id") != user_id:
                     continue
-                if ses.get("payment_status") not in ("paid", "no_payment_required"):
+                if _attr(ses, "payment_status") not in ("paid", "no_payment_required"):
                     continue
-                sub_id = ses.get("subscription")
+                sub_id = _attr(ses, "subscription")
                 if not sub_id:
                     continue
                 try:
-                    sub = dict(stripe.Subscription.retrieve(sub_id))
+                    sub = stripe.Subscription.retrieve(sub_id)
                     break
                 except Exception as exc:
                     log.warning("retrieve subscription %s failed: %s", sub_id, exc)
@@ -300,8 +333,9 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
     if not sub:
         return {"ok": False, "reason": "no_active_subscription"}
 
-    plan = (sub.get("metadata") or {}).get("plan") or "standard"
-    period_end = sub.get("current_period_end")
+    sub_md = _attr(sub, "metadata", {}) or {}
+    plan = (sub_md.get("plan") if hasattr(sub_md, "get") else None) or _attr(sub_md, "plan") or "standard"
+    period_end = _attr(sub, "current_period_end")
     period_end_str = None
     if period_end:
         from datetime import datetime, timezone
@@ -312,13 +346,13 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
 
     memberships_db.set_plan(
         user_id, plan,
-        status=sub.get("status", "active"),
-        stripe_customer_id=sub.get("customer"),
-        stripe_subscription_id=sub.get("id"),
+        status=_attr(sub, "status", "active"),
+        stripe_customer_id=_attr(sub, "customer"),
+        stripe_subscription_id=_attr(sub, "id"),
         current_period_end=period_end_str,
-        cancel_at_period_end=bool(sub.get("cancel_at_period_end")),
+        cancel_at_period_end=bool(_attr(sub, "cancel_at_period_end", False)),
     )
-    return {"ok": True, "plan": plan, "subscription_id": sub.get("id")}
+    return {"ok": True, "plan": plan, "subscription_id": _attr(sub, "id")}
 
 
 # ---------- Customer portal ---------------------------------------------------
