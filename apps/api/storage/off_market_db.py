@@ -76,6 +76,11 @@ CREATE TABLE IF NOT EXISTS off_market_listings (
     latitude           REAL,
     longitude          REAL,
     property_type      TEXT,
+    bedrooms           INTEGER,
+    bathrooms          REAL,
+    sqft               INTEGER,
+    lot_sqft           INTEGER,
+    year_built         INTEGER,
     estimated_value    INTEGER,
     assessed_value     INTEGER,
     loan_balance       INTEGER,
@@ -124,6 +129,11 @@ CREATE TABLE IF NOT EXISTS off_market_listings (
     latitude           DOUBLE PRECISION,
     longitude          DOUBLE PRECISION,
     property_type      TEXT,
+    bedrooms           INTEGER,
+    bathrooms          DOUBLE PRECISION,
+    sqft               INTEGER,
+    lot_sqft           INTEGER,
+    year_built         INTEGER,
     estimated_value    BIGINT,
     assessed_value     BIGINT,
     loan_balance       BIGINT,
@@ -140,6 +150,11 @@ ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS owner_name     TEXT;
 ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS latitude       DOUBLE PRECISION;
 ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS longitude      DOUBLE PRECISION;
 ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS property_type  TEXT;
+ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS bedrooms       INTEGER;
+ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS bathrooms      DOUBLE PRECISION;
+ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS sqft           INTEGER;
+ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS lot_sqft       INTEGER;
+ALTER TABLE off_market_listings ADD COLUMN IF NOT EXISTS year_built     INTEGER;
 CREATE INDEX IF NOT EXISTS idx_off_market_state     ON off_market_listings(state);
 CREATE INDEX IF NOT EXISTS idx_off_market_county    ON off_market_listings(county);
 CREATE INDEX IF NOT EXISTS idx_off_market_last_seen ON off_market_listings(last_seen);
@@ -198,6 +213,8 @@ def _sqlite_migrate(conn) -> None:
         ("assessed_value", "INTEGER"), ("loan_balance", "INTEGER"),
         ("owner_name", "TEXT"), ("latitude", "REAL"), ("longitude", "REAL"),
         ("property_type", "TEXT"),
+        ("bedrooms", "INTEGER"), ("bathrooms", "REAL"), ("sqft", "INTEGER"),
+        ("lot_sqft", "INTEGER"), ("year_built", "INTEGER"),
     ]:
         if col not in existing:
             conn.execute(f"ALTER TABLE off_market_listings ADD COLUMN {col} {decl}")
@@ -275,10 +292,11 @@ def upsert(lead: RawLead) -> str | None:
                 default_amount, sale_date, asking_price, lien_amount,
                 years_delinquent, vacancy_months, owner_state, owner_name,
                 latitude, longitude, property_type,
+                bedrooms, bathrooms, sqft, lot_sqft, year_built,
                 estimated_value, assessed_value, loan_balance,
                 first_seen, last_seen
             )
-            VALUES ({", ".join([ph] * 24)})
+            VALUES ({", ".join([ph] * 29)})
             ON CONFLICT (parcel_key) DO UPDATE SET
                 parcel_apn       = COALESCE(EXCLUDED.parcel_apn, off_market_listings.parcel_apn),
                 address          = COALESCE(EXCLUDED.address, off_market_listings.address),
@@ -298,6 +316,11 @@ def upsert(lead: RawLead) -> str | None:
                 latitude         = COALESCE(EXCLUDED.latitude, off_market_listings.latitude),
                 longitude        = COALESCE(EXCLUDED.longitude, off_market_listings.longitude),
                 property_type    = COALESCE(EXCLUDED.property_type, off_market_listings.property_type),
+                bedrooms         = COALESCE(EXCLUDED.bedrooms, off_market_listings.bedrooms),
+                bathrooms        = COALESCE(EXCLUDED.bathrooms, off_market_listings.bathrooms),
+                sqft             = COALESCE(EXCLUDED.sqft, off_market_listings.sqft),
+                lot_sqft         = COALESCE(EXCLUDED.lot_sqft, off_market_listings.lot_sqft),
+                year_built       = COALESCE(EXCLUDED.year_built, off_market_listings.year_built),
                 estimated_value  = COALESCE(EXCLUDED.estimated_value, off_market_listings.estimated_value),
                 assessed_value   = COALESCE(EXCLUDED.assessed_value, off_market_listings.assessed_value),
                 loan_balance     = COALESCE(EXCLUDED.loan_balance, off_market_listings.loan_balance),
@@ -312,6 +335,7 @@ def upsert(lead: RawLead) -> str | None:
                 lead.asking_price, lead.lien_amount,
                 lead.years_delinquent, lead.vacancy_duration_months, lead.owner_state, lead.owner_name,
                 lead.latitude, lead.longitude, lead.property_type,
+                lead.bedrooms, lead.bathrooms, lead.sqft, lead.lot_sqft, lead.year_built,
                 lead.estimated_value, lead.assessed_value, lead.loan_balance,
                 now, now,
             ),
@@ -321,27 +345,36 @@ def upsert(lead: RawLead) -> str | None:
 
 
 def query(
-    state: str | None = None,
+    states: list[str] | None = None,
+    state: str | None = None,             # legacy single-state alias
     county: str | None = None,
     source: str | None = None,
     property_type: str | None = None,
     min_value: int | None = None,
     max_value: int | None = None,
+    min_beds: int | None = None,
+    min_baths: float | None = None,
+    min_sqft: int | None = None,
+    max_sqft: int | None = None,
     limit: int = 100,
 ) -> list[dict]:
-    """Cheap fetch for the API — returns the canonical records, newest first.
+    """Cheap fetch for the API — returns the canonical records, newest first."""
+    # Normalize state(s)
+    state_list: list[str] | None = None
+    if states:
+        state_list = [s.upper() for s in states if s]
+    elif state:
+        state_list = [state.upper()]
 
-    `min_value` / `max_value` apply to the best price we have on each parcel:
-    asking_price preferred, else estimated_value (AVM), else assessed_value.
-    """
     with _conn() as (cur, dialect):
         ph = _ph(dialect)
         clauses: list[str] = []
         params: list = []
 
-        if state:
-            clauses.append(f"state = {ph}")
-            params.append(state)
+        if state_list:
+            placeholders = ",".join([ph] * len(state_list))
+            clauses.append(f"state IN ({placeholders})")
+            params.extend(state_list)
         if county:
             clauses.append(f"county = {ph}")
             params.append(county)
@@ -354,6 +387,18 @@ def query(
         if max_value is not None:
             clauses.append(f"COALESCE(asking_price, estimated_value, assessed_value) <= {ph}")
             params.append(max_value)
+        if min_beds is not None:
+            clauses.append(f"bedrooms >= {ph}")
+            params.append(min_beds)
+        if min_baths is not None:
+            clauses.append(f"bathrooms >= {ph}")
+            params.append(min_baths)
+        if min_sqft is not None:
+            clauses.append(f"sqft >= {ph}")
+            params.append(min_sqft)
+        if max_sqft is not None:
+            clauses.append(f"sqft <= {ph}")
+            params.append(max_sqft)
         if source:
             if dialect == "pg":
                 clauses.append(f"source_tags @> {ph}::jsonb")

@@ -190,6 +190,28 @@ def _maybe_absentee(p: dict) -> RawLead | None:
         summary.get("proptype") or "",
     )
 
+    # Building details from ATTOM basicprofile
+    building = p.get("building") or {}
+    rooms = building.get("rooms") or {}
+    size = building.get("size") or {}
+    lot = p.get("lot") or {}
+    summary_b = p.get("summary") or {}
+
+    def _to_int(v):
+        try: return int(v)
+        except (TypeError, ValueError): return None
+
+    def _to_float(v):
+        try: return float(v)
+        except (TypeError, ValueError): return None
+
+    bedrooms = _to_int(rooms.get("beds"))
+    # bathstotal is decimal in ATTOM (e.g. 2.5)
+    bathrooms = _to_float(rooms.get("bathstotal"))
+    sqft = _to_int(size.get("universalsize") or size.get("livingsize") or size.get("bldgsize"))
+    lot_sqft = _to_int(lot.get("lotsize2") or lot.get("lotsize1"))
+    year_built = _to_int(summary_b.get("yearbuilt"))
+
     # Property state — ATTOM uses `countrySubd` for the 2-letter state code
     prop_state = (prop_addr.get("countrySubd") or "").upper().strip() or None
     if not prop_state:
@@ -212,6 +234,11 @@ def _maybe_absentee(p: dict) -> RawLead | None:
         latitude=lat,
         longitude=lng,
         property_type=prop_type,
+        bedrooms=bedrooms,
+        bathrooms=bathrooms,
+        sqft=sqft,
+        lot_sqft=lot_sqft,
+        year_built=year_built,
         extra={
             "attom_id":     (p.get("identifier") or {}).get("attomId"),
             "prop_addr":    prop_addr.get("oneLine"),

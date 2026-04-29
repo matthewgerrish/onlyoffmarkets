@@ -225,6 +225,21 @@ export default function Property() {
               <dl className="mt-3 space-y-2 text-sm">
                 {p.owner_name && <Row k="Owner" v={p.owner_name} />}
                 {p.parcel_apn && <Row k="APN" v={p.parcel_apn} mono />}
+                {p.bedrooms !== null && p.bedrooms !== undefined && (
+                  <Row k="Bedrooms" v={String(p.bedrooms)} />
+                )}
+                {p.bathrooms !== null && p.bathrooms !== undefined && (
+                  <Row k="Bathrooms" v={String(p.bathrooms)} />
+                )}
+                {p.sqft !== null && p.sqft !== undefined && (
+                  <Row k="Sqft" v={p.sqft.toLocaleString()} />
+                )}
+                {p.lot_sqft !== null && p.lot_sqft !== undefined && (
+                  <Row k="Lot size" v={`${p.lot_sqft.toLocaleString()} sqft`} />
+                )}
+                {p.year_built !== null && p.year_built !== undefined && (
+                  <Row k="Year built" v={String(p.year_built)} />
+                )}
                 {p.estimated_value && (
                   <Row k="Est. value (AVM)" v={`$${p.estimated_value.toLocaleString()}`} />
                 )}

@@ -10,6 +10,8 @@ import SmartSearch from '../components/SmartSearch';
 import BrowseStates from '../components/BrowseStates';
 import PropertyTypePicker from '../components/PropertyTypePicker';
 import PriceRange from '../components/PriceRange';
+import RegionPicker from '../components/RegionPicker';
+import BedBathSqft from '../components/BedBathSqft';
 import {
   listOffMarket, getPins, getCoverage,
   OffMarketRow, ApiSource, Pin, PropertyType, CoverageSummary,
@@ -25,9 +27,13 @@ export default function Search() {
   const [counts, setCounts] = useState<Record<string, number>>({});
   const [error, setError] = useState<string | null>(null);
 
-  const [state, setState] = useState<string>('');
+  const [selectedStates, setSelectedStates] = useState<string[]>([]);
   const [propertyType, setPropertyType] = useState<PropertyType | ''>('');
   const [priceRange, setPriceRange] = useState<{ min: number | null; max: number | null }>({ min: null, max: null });
+  const [minBeds, setMinBeds] = useState<number | null>(null);
+  const [minBaths, setMinBaths] = useState<number | null>(null);
+  const [minSqft, setMinSqft] = useState<number | null>(null);
+  const [maxSqft, setMaxSqft] = useState<number | null>(null);
   const [enabledSources, setEnabledSources] = useState<Set<ApiSource>>(new Set(ALL_SOURCES));
   const [minScore, setMinScore] = useState<number>(0);
   const [coverage, setCoverage] = useState<CoverageSummary | null>(null);
@@ -47,30 +53,32 @@ export default function Search() {
     let cancelled = false;
     setRows(null);
     setError(null);
-    listOffMarket({
-      state: state || undefined,
+    const filterArgs = {
+      states: selectedStates.length > 0 ? selectedStates : undefined,
       property_type: propertyType || undefined,
       min_value: priceRange.min ?? undefined,
       max_value: priceRange.max ?? undefined,
-      limit: 300,
-    })
+      min_beds: minBeds ?? undefined,
+      min_baths: minBaths ?? undefined,
+      min_sqft: minSqft ?? undefined,
+      max_sqft: maxSqft ?? undefined,
+    };
+    listOffMarket({ ...filterArgs, limit: 300 })
       .then((data) => {
         if (cancelled) return;
         setRows(data.results);
         setCounts(data.counts);
       })
       .catch((e: Error) => !cancelled && setError(e.message));
-    // Fetch all pins separately so the map shows every state we cover
-    getPins({
-      state: state || undefined,
-      property_type: propertyType || undefined,
-      min_value: priceRange.min ?? undefined,
-      max_value: priceRange.max ?? undefined,
-    })
+    getPins(filterArgs)
       .then((d) => !cancelled && setPins(d.pins))
       .catch(() => {});
     return () => { cancelled = true; };
-  }, [state, propertyType, priceRange.min, priceRange.max]);
+  }, [
+    selectedStates.join(','),
+    propertyType, priceRange.min, priceRange.max,
+    minBeds, minBaths, minSqft, maxSqft,
+  ]);
 
   // Fetch coverage once for filter counts + browse states
   useEffect(() => {
@@ -132,6 +140,11 @@ export default function Search() {
         assessed_value: p.assessed_value,
         loan_balance: p.loan_balance,
         property_type: p.property_type,
+        bedrooms: null,
+        bathrooms: null,
+        sqft: null,
+        lot_sqft: null,
+        year_built: null,
         estimated_equity: null,
         spread_pct: null,
         adu_ready: 0,
@@ -154,10 +167,6 @@ export default function Search() {
     });
   };
 
-  const states = useMemo(
-    () => Array.from(new Set((rows ?? []).map((r) => r.state))).sort(),
-    [rows]
-  );
 
   // Hover scroll into view
   const listScrollerRef = useRef<HTMLDivElement>(null);
@@ -173,11 +182,12 @@ export default function Search() {
   }, [hoveredKey]);
 
   const filterChipsActive =
-    (state ? 1 : 0) +
+    (selectedStates.length > 0 ? 1 : 0) +
     (minScore > 0 ? 1 : 0) +
     (enabledSources.size < ALL_SOURCES.length ? 1 : 0) +
     (propertyType ? 1 : 0) +
-    ((priceRange.min !== null || priceRange.max !== null) ? 1 : 0);
+    ((priceRange.min !== null || priceRange.max !== null) ? 1 : 0) +
+    ((minBeds !== null || minBaths !== null || minSqft !== null || maxSqft !== null) ? 1 : 0);
 
   return (
     <>
@@ -200,7 +210,8 @@ export default function Search() {
           <div className="absolute top-3 left-3 z-10">
             <SmartSearch
               onSelect={(sel) => {
-                if (sel.state !== undefined) setState(sel.state || '');
+                if (sel.state) setSelectedStates([sel.state]);
+                else if (sel.state === '') setSelectedStates([]);
                 if (sel.query) setAddressQuery(sel.query);
                 else if (sel.zip) setAddressQuery(sel.zip);
                 else if (sel.city) setAddressQuery(sel.city);
@@ -235,7 +246,10 @@ export default function Search() {
 
         {/* Listings column (right) */}
         <aside className="bg-white border-l border-slate-100 flex flex-col h-full overflow-hidden">
-          <BrowseStates selected={state} onSelect={setState} />
+          <BrowseStates
+            selected={selectedStates.length === 1 ? selectedStates[0] : ''}
+            onSelect={(s) => setSelectedStates(s ? [s] : [])}
+          />
           <div className="px-4 py-2 border-b border-slate-100">
             <PropertyTypePicker
               value={propertyType}
@@ -323,21 +337,27 @@ export default function Search() {
       {/* Filters drawer */}
       {filtersOpen && (
         <FiltersDrawer
-          state={state}
-          setState={setState}
+          selectedStates={selectedStates}
+          setSelectedStates={setSelectedStates}
           minScore={minScore}
           setMinScore={setMinScore}
           priceRange={priceRange}
           setPriceRange={setPriceRange}
+          minBeds={minBeds} setMinBeds={setMinBeds}
+          minBaths={minBaths} setMinBaths={setMinBaths}
+          minSqft={minSqft} setMinSqft={setMinSqft}
+          maxSqft={maxSqft} setMaxSqft={setMaxSqft}
           enabledSources={enabledSources}
           toggleSource={toggleSource}
           counts={counts}
-          states={states}
+          stateCounts={coverage?.by_state || {}}
           onClose={() => setFiltersOpen(false)}
           onClearAll={() => {
-            setState('');
+            setSelectedStates([]);
             setMinScore(0);
             setPriceRange({ min: null, max: null });
+            setMinBeds(null); setMinBaths(null);
+            setMinSqft(null); setMaxSqft(null);
             setEnabledSources(new Set(ALL_SOURCES));
           }}
         />
@@ -472,29 +492,37 @@ function ScoreBadge({ total, band }: { total: number; band: DealScore['band'] })
 /* ---------- Filters drawer (slides in from the right of the listings column) ---------- */
 
 function FiltersDrawer({
-  state,
-  setState,
+  selectedStates,
+  setSelectedStates,
   minScore,
   setMinScore,
   priceRange,
   setPriceRange,
+  minBeds, setMinBeds,
+  minBaths, setMinBaths,
+  minSqft, setMinSqft,
+  maxSqft, setMaxSqft,
   enabledSources,
   toggleSource,
   counts,
-  states,
+  stateCounts,
   onClose,
   onClearAll,
 }: {
-  state: string;
-  setState: (s: string) => void;
+  selectedStates: string[];
+  setSelectedStates: (s: string[]) => void;
   minScore: number;
   setMinScore: (n: number) => void;
   priceRange: { min: number | null; max: number | null };
   setPriceRange: (v: { min: number | null; max: number | null }) => void;
+  minBeds: number | null; setMinBeds: (n: number | null) => void;
+  minBaths: number | null; setMinBaths: (n: number | null) => void;
+  minSqft: number | null; setMinSqft: (n: number | null) => void;
+  maxSqft: number | null; setMaxSqft: (n: number | null) => void;
   enabledSources: Set<ApiSource>;
   toggleSource: (s: ApiSource) => void;
   counts: Record<string, number>;
-  states: string[];
+  stateCounts: Record<string, number>;
   onClose: () => void;
   onClearAll: () => void;
 }) {
@@ -542,15 +570,12 @@ function FiltersDrawer({
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">State</label>
-            <select className="input w-full" value={state} onChange={(e) => setState(e.target.value)}>
-              <option value="">All states</option>
-              {states.map((s) => (
-                <option key={s} value={s}>
-                  {s}
-                </option>
-              ))}
-            </select>
+            <label className="block text-xs font-semibold text-slate-600 mb-2">Region & states</label>
+            <RegionPicker
+              selected={selectedStates}
+              onChange={setSelectedStates}
+              counts={stateCounts}
+            />
           </div>
 
           <div>
@@ -559,6 +584,16 @@ function FiltersDrawer({
             <p className="text-[11px] text-slate-500 mt-2">
               Best price per parcel — asking price preferred, else AVM, else assessed value.
             </p>
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-2">Home details</label>
+            <BedBathSqft
+              minBeds={minBeds} setMinBeds={setMinBeds}
+              minBaths={minBaths} setMinBaths={setMinBaths}
+              minSqft={minSqft} setMinSqft={setMinSqft}
+              maxSqft={maxSqft} setMaxSqft={setMaxSqft}
+            />
           </div>
 
           <div>

@@ -31,36 +31,57 @@ SOURCE_TYPES = Literal[
 ]
 
 
+def _parse_states(states: str | None, state: str | None) -> list[str] | None:
+    """Accept ?states=WA,CA,OR or legacy ?state=WA. Returns None or list of 2-letter codes."""
+    if states:
+        out = [s.strip().upper() for s in states.split(",") if s.strip()]
+        return out or None
+    if state:
+        return [state.upper()]
+    return None
+
+
 @router.get("")
 async def list_off_market(
     source: SOURCE_TYPES = "all",
-    state: str | None = Query(None, min_length=2, max_length=2, description="Two-letter state code"),
+    state: str | None = Query(None, min_length=2, max_length=2, description="Single state (legacy)"),
+    states: str | None = Query(None, description="Comma-separated list of 2-letter state codes"),
     county: str | None = None,
     property_type: str | None = Query(None, description="single_family|condo|townhome|multi_family|land|commercial|manufactured|other"),
     min_value: int | None = Query(None, ge=0),
     max_value: int | None = Query(None, ge=0),
+    min_beds: int | None = Query(None, ge=0),
+    min_baths: float | None = Query(None, ge=0),
+    min_sqft: int | None = Query(None, ge=0),
+    max_sqft: int | None = Query(None, ge=0),
     limit: int = Query(60, ge=1, le=300),
 ) -> dict:
+    state_list = _parse_states(states, state)
     cache_key = (
-        f"off-market:list:{source}:{state or 'any'}:{county or 'any'}:"
-        f"{property_type or 'any'}:{min_value or 0}:{max_value or 0}:{limit}"
+        f"off-market:list:{source}:{','.join(state_list) if state_list else 'any'}:{county or 'any'}:"
+        f"{property_type or 'any'}:{min_value or 0}:{max_value or 0}:"
+        f"{min_beds or 0}:{min_baths or 0}:{min_sqft or 0}:{max_sqft or 0}:{limit}"
     )
     cached = await cache.get_json(cache_key)
     if cached:
         return cached
 
     rows = db_query(
-        state=state.upper() if state else None,
+        states=state_list,
         county=county,
         source=None if source == "all" else source,
         property_type=property_type,
         min_value=min_value,
         max_value=max_value,
+        min_beds=min_beds,
+        min_baths=min_baths,
+        min_sqft=min_sqft,
+        max_sqft=max_sqft,
         limit=limit,
     )
 
     # Source counts via single grouped SQL query (was: pull 10k rows + Python loop)
-    counts = source_counts(state=state.upper() if state else None, county=county)
+    counts = source_counts(state=state_list[0] if state_list and len(state_list) == 1 else None, county=county)
 
     payload = {
         "results": rows,
@@ -131,19 +152,25 @@ async def coverage_summary() -> dict:
 @router.get("/_/pins")
 async def all_pins(
     state: str | None = Query(None, min_length=2, max_length=2),
+    states: str | None = Query(None),
     source: SOURCE_TYPES = "all",
     property_type: str | None = Query(None),
     min_value: int | None = Query(None, ge=0),
     max_value: int | None = Query(None, ge=0),
+    min_beds: int | None = Query(None, ge=0),
+    min_baths: float | None = Query(None, ge=0),
+    min_sqft: int | None = Query(None, ge=0),
+    max_sqft: int | None = Query(None, ge=0),
 ) -> dict:
     """Lightweight pin payload for the map — every parcel with coordinates.
 
     Returns only the fields needed to render a marker (parcel_key, lat,
     lng, score-driving fields). Cached for 5 min. Up to 10k pins.
     """
+    state_list = _parse_states(states, state)
     cache_key = (
-        f"off-market:pins:{state or 'any'}:{source}:{property_type or 'any'}:"
-        f"{min_value or 0}:{max_value or 0}"
+        f"off-market:pins:{','.join(state_list) if state_list else 'any'}:{source}:{property_type or 'any'}:"
+        f"{min_value or 0}:{max_value or 0}:{min_beds or 0}:{min_baths or 0}:{min_sqft or 0}:{max_sqft or 0}"
     )
     cached = await cache.get_json(cache_key)
     if cached:
@@ -154,9 +181,10 @@ async def all_pins(
         ph = _ph(dialect)
         clauses = ["latitude IS NOT NULL", "longitude IS NOT NULL"]
         params: list = []
-        if state:
-            clauses.append(f"state = {ph}")
-            params.append(state.upper())
+        if state_list:
+            placeholders = ",".join([ph] * len(state_list))
+            clauses.append(f"state IN ({placeholders})")
+            params.extend(state_list)
         if property_type:
             clauses.append(f"property_type = {ph}")
             params.append(property_type)
@@ -166,6 +194,18 @@ async def all_pins(
         if max_value is not None:
             clauses.append(f"COALESCE(asking_price, estimated_value, assessed_value) <= {ph}")
             params.append(max_value)
+        if min_beds is not None:
+            clauses.append(f"bedrooms >= {ph}")
+            params.append(min_beds)
+        if min_baths is not None:
+            clauses.append(f"bathrooms >= {ph}")
+            params.append(min_baths)
+        if min_sqft is not None:
+            clauses.append(f"sqft >= {ph}")
+            params.append(min_sqft)
+        if max_sqft is not None:
+            clauses.append(f"sqft <= {ph}")
+            params.append(max_sqft)
         if source != "all":
             if dialect == "pg":
                 clauses.append(f"source_tags @> {ph}::jsonb")

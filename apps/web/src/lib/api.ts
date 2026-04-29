@@ -28,6 +28,11 @@ export interface OffMarketRow {
   assessed_value: number | null;
   loan_balance: number | null;
   property_type: string | null;
+  bedrooms: number | null;
+  bathrooms: number | null;
+  sqft: number | null;
+  lot_sqft: number | null;
+  year_built: number | null;
   estimated_equity: number | null;
   spread_pct: number | null;
   adu_ready: number;
@@ -59,21 +64,31 @@ export type PropertyType =
 interface ListParams {
   source?: ApiSource | 'all';
   state?: string;
+  states?: string[];
   county?: string;
   property_type?: PropertyType;
   min_value?: number;
   max_value?: number;
+  min_beds?: number;
+  min_baths?: number;
+  min_sqft?: number;
+  max_sqft?: number;
   limit?: number;
 }
 
 export async function listOffMarket(params: ListParams = {}): Promise<OffMarketListResponse> {
   const url = new URL(`${API_BASE}/off-market`);
   if (params.source && params.source !== 'all') url.searchParams.set('source', params.source);
-  if (params.state) url.searchParams.set('state', params.state);
+  if (params.states && params.states.length > 0) url.searchParams.set('states', params.states.join(','));
+  else if (params.state) url.searchParams.set('state', params.state);
   if (params.county) url.searchParams.set('county', params.county);
   if (params.property_type) url.searchParams.set('property_type', params.property_type);
   if (typeof params.min_value === 'number') url.searchParams.set('min_value', String(params.min_value));
   if (typeof params.max_value === 'number') url.searchParams.set('max_value', String(params.max_value));
+  if (typeof params.min_beds === 'number') url.searchParams.set('min_beds', String(params.min_beds));
+  if (typeof params.min_baths === 'number') url.searchParams.set('min_baths', String(params.min_baths));
+  if (typeof params.min_sqft === 'number') url.searchParams.set('min_sqft', String(params.min_sqft));
+  if (typeof params.max_sqft === 'number') url.searchParams.set('max_sqft', String(params.max_sqft));
   if (params.limit) url.searchParams.set('limit', String(params.limit));
 
   const r = await fetch(url.toString());
@@ -125,18 +140,28 @@ export interface Pin {
 export async function getPins(
   params: {
     state?: string;
+    states?: string[];
     source?: ApiSource | 'all';
     property_type?: PropertyType;
     min_value?: number;
     max_value?: number;
+    min_beds?: number;
+    min_baths?: number;
+    min_sqft?: number;
+    max_sqft?: number;
   } = {}
 ): Promise<{ pins: Pin[]; count: number }> {
   const url = new URL(`${API_BASE}/off-market/_/pins`);
-  if (params.state) url.searchParams.set('state', params.state);
+  if (params.states && params.states.length > 0) url.searchParams.set('states', params.states.join(','));
+  else if (params.state) url.searchParams.set('state', params.state);
   if (params.source && params.source !== 'all') url.searchParams.set('source', params.source);
   if (params.property_type) url.searchParams.set('property_type', params.property_type);
   if (typeof params.min_value === 'number') url.searchParams.set('min_value', String(params.min_value));
   if (typeof params.max_value === 'number') url.searchParams.set('max_value', String(params.max_value));
+  if (typeof params.min_beds === 'number') url.searchParams.set('min_beds', String(params.min_beds));
+  if (typeof params.min_baths === 'number') url.searchParams.set('min_baths', String(params.min_baths));
+  if (typeof params.min_sqft === 'number') url.searchParams.set('min_sqft', String(params.min_sqft));
+  if (typeof params.max_sqft === 'number') url.searchParams.set('max_sqft', String(params.max_sqft));
   const r = await fetch(url.toString());
   if (!r.ok) throw new Error(`API ${r.status}`);
   return r.json();
