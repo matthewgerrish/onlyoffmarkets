@@ -183,6 +183,56 @@ async def confirm_session(
     raise HTTPException(400, f"Unknown checkout kind: {kind}")
 
 
+@router.get("/debug/me")
+async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
+    """List recent Stripe activity tied to this user — diagnostic only."""
+    user_id = _user(x_user_id)
+    if not stripe_client.is_live():
+        return {"ok": True, "mock": True}
+
+    import stripe  # type: ignore[import-untyped]
+
+    stripe.api_key = stripe_client.STRIPE_SECRET
+    out: dict = {"user_id": user_id, "membership_row": memberships_db.get(user_id)}
+
+    sessions: list[dict] = []
+    try:
+        ses_list = stripe.checkout.Session.list(limit=20)
+        for s in ses_list.get("data") or []:
+            sessions.append({
+                "id": s.get("id"),
+                "client_reference_id": s.get("client_reference_id"),
+                "payment_status": s.get("payment_status"),
+                "mode": s.get("mode"),
+                "subscription": s.get("subscription"),
+                "customer": s.get("customer"),
+                "metadata": s.get("metadata") or {},
+                "created": s.get("created"),
+            })
+    except Exception as exc:
+        out["sessions_error"] = str(exc)
+    out["all_recent_sessions"] = sessions
+    out["my_sessions"] = [s for s in sessions if s.get("client_reference_id") == user_id]
+
+    subs: list[dict] = []
+    try:
+        sub_list = stripe.Subscription.list(status="all", limit=20)
+        for s in sub_list.get("data") or []:
+            subs.append({
+                "id": s.get("id"),
+                "status": s.get("status"),
+                "customer": s.get("customer"),
+                "metadata": s.get("metadata") or {},
+                "created": s.get("created"),
+            })
+    except Exception as exc:
+        out["subs_error"] = str(exc)
+    out["all_recent_subscriptions"] = subs
+    out["my_subscriptions"] = [s for s in subs if (s.get("metadata") or {}).get("user_id") == user_id]
+
+    return out
+
+
 @router.post("/sync")
 async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict:
     """Recover any active subscription on the user's Stripe account.
@@ -225,6 +275,27 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
                     break
         except Exception as exc:
             log.warning("sync stripe.Subscription.list() failed: %s", exc)
+
+    # 3) Walk recent Checkout Sessions — more reliable than Subscription
+    #    metadata since we explicitly set client_reference_id = user_id.
+    if not sub:
+        try:
+            sessions = stripe.checkout.Session.list(limit=20)
+            for ses in sessions.get("data") or []:
+                if ses.get("client_reference_id") != user_id:
+                    continue
+                if ses.get("payment_status") not in ("paid", "no_payment_required"):
+                    continue
+                sub_id = ses.get("subscription")
+                if not sub_id:
+                    continue
+                try:
+                    sub = dict(stripe.Subscription.retrieve(sub_id))
+                    break
+                except Exception as exc:
+                    log.warning("retrieve subscription %s failed: %s", sub_id, exc)
+        except Exception as exc:
+            log.warning("sync stripe.checkout.Session.list() failed: %s", exc)
 
     if not sub:
         return {"ok": False, "reason": "no_active_subscription"}
