@@ -20,6 +20,7 @@ from routes.mailers import router as mailers_router
 from routes.admin import router as admin_router
 from routes.tokens import router as tokens_router
 from routes.billing import router as billing_router
+from routes.auth import router as auth_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,3 +53,4 @@ app.include_router(mailers_router)
 app.include_router(admin_router)
 app.include_router(tokens_router)
 app.include_router(billing_router)
+app.include_router(auth_router)

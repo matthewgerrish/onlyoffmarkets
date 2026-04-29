@@ -4,6 +4,10 @@ import { Search, Bell, DollarSign, Database, Info, Mail, Menu, X, Coins, Crown }
 import Logo from './Logo';
 import TokenBadge from './TokenBadge';
 import MembershipBadge from './MembershipBadge';
+import LoginModal from './LoginModal';
+import AuthBootstrap from './AuthBootstrap';
+import { useAuth } from './AuthContext';
+import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
 
 /** Primary nav — kept short so the bar fits on standard laptop widths. */
 const nav = [
@@ -24,9 +28,12 @@ const navSecondary = [
 export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
+  const { isAuthed, user, openLogin, signOut } = useAuth();
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
+      <AuthBootstrap />
+      <LoginModal />
       <header className="sticky top-0 z-40 bg-white/85 backdrop-blur border-b border-slate-100 overflow-hidden">
         <div className="container-page flex h-16 items-center justify-between gap-2 min-w-0">
           <Link
@@ -67,12 +74,36 @@ export default function Layout() {
             <span className="hidden lg:inline-flex"><MembershipBadge /></span>
             <span className="hidden sm:inline-flex"><TokenBadge /></span>
             <span className="sm:hidden"><TokenBadge compact /></span>
-            <Link
-              to="/membership"
-              className="btn-primary text-xs whitespace-nowrap hidden xl:inline-flex !px-3 !py-1.5"
-            >
-              Subscribe
-            </Link>
+
+            {isAuthed ? (
+              <div className="hidden md:inline-flex items-center gap-1">
+                <span
+                  title={user?.email || ''}
+                  className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold text-slate-700 bg-slate-100 max-w-[160px]"
+                >
+                  <UserIcon className="w-3 h-3 shrink-0 text-slate-500" />
+                  <span className="truncate">{user?.email}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  title="Sign out"
+                  className="inline-flex items-center justify-center w-8 h-8 rounded-full text-slate-500 hover:text-rose-600 hover:bg-slate-100"
+                  aria-label="Sign out"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={openLogin}
+                className="hidden md:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-700 hover:bg-slate-100 whitespace-nowrap"
+              >
+                <LogIn className="w-3.5 h-3.5" /> Sign in
+              </button>
+            )}
+
             <button
               type="button"
               className="lg:hidden inline-flex items-center justify-center w-10 h-10 rounded-full text-slate-700 hover:bg-slate-100"
@@ -90,6 +121,16 @@ export default function Layout() {
         open={menuOpen}
         onClose={() => setMenuOpen(false)}
         currentPath={location.pathname}
+        isAuthed={isAuthed}
+        userEmail={user?.email || null}
+        onSignIn={() => {
+          setMenuOpen(false);
+          openLogin();
+        }}
+        onSignOut={async () => {
+          setMenuOpen(false);
+          await signOut();
+        }}
       />
 
       <main className="flex-1">
@@ -119,10 +160,18 @@ function MobileDrawer({
   open,
   onClose,
   currentPath,
+  isAuthed,
+  userEmail,
+  onSignIn,
+  onSignOut,
 }: {
   open: boolean;
   onClose: () => void;
   currentPath: string;
+  isAuthed: boolean;
+  userEmail: string | null;
+  onSignIn: () => void;
+  onSignOut: () => void | Promise<void>;
 }) {
   return (
     <div
@@ -176,8 +225,26 @@ function MobileDrawer({
         </nav>
 
         <div className="border-t border-slate-100 p-4 flex flex-col gap-2">
-          <Link to="/search" onClick={onClose} className="btn-outline w-full justify-center">Sign in</Link>
-          <Link to="/pricing" onClick={onClose} className="btn-primary w-full justify-center">Subscribe</Link>
+          {isAuthed ? (
+            <>
+              {userEmail && (
+                <div className="text-[11px] text-slate-500 truncate text-center mb-1">
+                  Signed in as <strong className="text-slate-700">{userEmail}</strong>
+                </div>
+              )}
+              <button
+                onClick={() => void onSignOut()}
+                className="btn-outline w-full justify-center"
+              >
+                Sign out
+              </button>
+            </>
+          ) : (
+            <button onClick={onSignIn} className="btn-outline w-full justify-center">
+              Sign in
+            </button>
+          )}
+          <Link to="/membership" onClick={onClose} className="btn-primary w-full justify-center">Subscribe</Link>
         </div>
       </div>
     </div>

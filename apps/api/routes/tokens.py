@@ -11,16 +11,15 @@ import os
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from services import memberships, tokens_pricing
+from services import identity, memberships, tokens_pricing
 from storage import memberships_db, tokens_db
 
 router = APIRouter(prefix="/tokens", tags=["tokens"])
 
 
-def _resolve_user_id(x_user_id: str | None) -> str:
-    if not x_user_id or len(x_user_id) < 6:
-        raise HTTPException(status_code=400, detail="X-User-Id header required")
-    return x_user_id.strip()[:64]
+def _resolve_user_id(x_user_id: str | None, authorization: str | None = None) -> str:
+    """Identity resolver — JWT first, X-User-Id fallback (until REQUIRE_AUTH=1)."""
+    return identity.resolve_user_id(authorization, x_user_id)
 
 
 @router.get("/packages")
@@ -33,17 +32,19 @@ async def list_packages() -> dict:
 
 
 @router.get("/balance")
-async def get_balance(x_user_id: str | None = Header(default=None)) -> dict:
-    user_id = _resolve_user_id(x_user_id)
+async def get_balance(authorization: str | None = Header(default=None, alias="Authorization"),
+    x_user_id: str | None = Header(default=None)) -> dict:
+    user_id = _resolve_user_id(x_user_id, authorization)
     return tokens_db.summary(user_id)
 
 
 @router.get("/transactions")
 async def list_transactions(
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None),
     limit: int = 50,
 ) -> dict:
-    user_id = _resolve_user_id(x_user_id)
+    user_id = _resolve_user_id(x_user_id, authorization)
     return {"results": tokens_db.transactions(user_id, limit=min(int(limit), 200))}
 
 
@@ -54,6 +55,7 @@ class PurchaseIn(BaseModel):
 @router.post("/purchase")
 async def purchase(
     body: PurchaseIn,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None),
 ) -> dict:
     """Dev-only mock purchase. Disabled when STRIPE_SECRET_KEY is set —
@@ -63,7 +65,7 @@ async def purchase(
             status_code=410,
             detail="Use /billing/checkout/tokens — mock purchase disabled in production",
         )
-    user_id = _resolve_user_id(x_user_id)
+    user_id = _resolve_user_id(x_user_id, authorization)
     try:
         pkg = tokens_pricing.get_package(body.package_id)
     except ValueError:

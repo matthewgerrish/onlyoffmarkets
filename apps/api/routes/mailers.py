@@ -18,7 +18,8 @@ from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from services.lob_client import lob_client
-from services import tokens_pricing
+from services import identity, tokens_pricing
+from services.rate_limit import limiter
 from storage import tokens_db
 from storage.off_market_db import _conn, _ph, get_one, _resolve_url, _is_postgres
 
@@ -352,6 +353,7 @@ async def list_campaigns() -> dict:
 @router.post("/campaigns")
 async def send_campaign(
     c: CampaignIn,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None),
 ) -> dict:
     """Create + immediately send a postcard campaign through Lob.
@@ -366,7 +368,9 @@ async def send_campaign(
         raise HTTPException(status_code=400, detail="No recipients selected")
 
     # Pre-charge token cost for the whole batch.
-    user_id = (x_user_id or "").strip()[:64]
+    user_id = identity.optional_user_id(authorization, x_user_id) or ""
+    # 5 sends/min — way above interactive use; blocks scripted spam.
+    limiter.check("mailer_send", user_id or "_anon", max=5, per_seconds=60)
     per_postcard = tokens_pricing.cost_tokens("mailer_postcard")
     total_cost = per_postcard * len(c.parcel_keys)
     debited_total = 0

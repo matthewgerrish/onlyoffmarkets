@@ -20,7 +20,17 @@ export function getUserId(): string {
 }
 
 export function apiHeaders(extra: Record<string, string> = {}): Record<string, string> {
-  return { 'X-User-Id': getUserId(), ...extra };
+  // Send both: backend prefers the JWT bearer, falls back to X-User-Id
+  // for anonymous (un-signed-in) traffic. Either path resolves to the
+  // same canonical user_id in `services/identity.py`.
+  const headers: Record<string, string> = { 'X-User-Id': getUserId(), ...extra };
+  try {
+    const tok = localStorage.getItem('oom_session_token_v1');
+    if (tok) headers.Authorization = `Bearer ${tok}`;
+  } catch {
+    /* localStorage unavailable — fine */
+  }
+  return headers;
 }
 
 export interface TokenPackage {

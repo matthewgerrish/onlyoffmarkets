@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from services import skip_trace, skip_trace_pricing, tokens_pricing
+from services import identity, skip_trace, skip_trace_pricing, tokens_pricing
+from services.rate_limit import limiter
 from storage import tokens_db
 from storage.off_market_db import get_one
 
@@ -33,6 +34,7 @@ async def pricing() -> dict:
 async def lookup_owner(
     parcel_key: str,
     tier: str = Query("standard", pattern="^(standard|pro)$"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None),
 ) -> dict:
     rec = get_one(parcel_key)
@@ -41,7 +43,11 @@ async def lookup_owner(
 
     action_key = f"skip_trace_{tier}"
     cost = tokens_pricing.cost_tokens(action_key)
-    user_id = (x_user_id or "").strip()[:64]
+    user_id = identity.optional_user_id(authorization, x_user_id) or ""
+
+    # 30 lookups/min per user is well above any human pace; throttles
+    # script abuse trying to drain a user's wallet.
+    limiter.check("owner_lookup", user_id or "_anon", max=30, per_seconds=60)
 
     # Charge tokens before calling the provider — refund on hard failure.
     debited = False

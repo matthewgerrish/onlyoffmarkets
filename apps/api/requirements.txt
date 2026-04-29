@@ -7,6 +7,8 @@ python-dotenv>=1.0
 redis>=5.0
 psycopg[binary]>=3.2
 stripe>=11.0
+PyJWT>=2.9
+email-validator>=2.0
 
 # scrapers
 beautifulsoup4>=4.12

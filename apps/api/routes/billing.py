@@ -11,17 +11,17 @@ from fastapi import APIRouter, Header, HTTPException, Request
 from fastapi.responses import PlainTextResponse, RedirectResponse
 from pydantic import BaseModel
 
-from services import memberships, stripe_client, tokens_pricing
+from services import identity, memberships, stripe_client, tokens_pricing
+from services.rate_limit import limiter
 from storage import memberships_db, tokens_db
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/billing", tags=["billing"])
 
 
-def _user(x_user_id: str | None) -> str:
-    if not x_user_id or len(x_user_id) < 6:
-        raise HTTPException(400, "X-User-Id header required")
-    return x_user_id.strip()[:64]
+def _user(x_user_id: str | None, authorization: str | None = None) -> str:
+    """Identity resolver — JWT first, X-User-Id fallback (until REQUIRE_AUTH=1)."""
+    return identity.resolve_user_id(authorization, x_user_id)
 
 
 # ---------- Plans summary -----------------------------------------------------
@@ -35,8 +35,9 @@ async def list_plans() -> dict:
 
 
 @router.get("/membership")
-async def get_membership(x_user_id: str | None = Header(default=None)) -> dict:
-    user_id = _user(x_user_id)
+async def get_membership(authorization: str | None = Header(default=None, alias="Authorization"),
+    x_user_id: str | None = Header(default=None)) -> dict:
+    user_id = _user(x_user_id, authorization)
     row = memberships_db.get(user_id)
     plan_id = row.get("plan", "free")
     plan_meta = memberships.get(plan_id)
@@ -60,9 +61,11 @@ class TokenCheckoutIn(BaseModel):
 @router.post("/checkout/tokens")
 async def checkout_tokens(
     body: TokenCheckoutIn,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None),
 ) -> dict:
-    user_id = _user(x_user_id)
+    user_id = _user(x_user_id, authorization)
+    limiter.check("checkout_tokens", user_id, max=10, per_seconds=60)
     try:
         pkg = tokens_pricing.get_package(body.package_id)
     except ValueError:
@@ -90,9 +93,11 @@ class MembershipCheckoutIn(BaseModel):
 @router.post("/checkout/membership")
 async def checkout_membership(
     body: MembershipCheckoutIn,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None),
 ) -> dict:
-    user_id = _user(x_user_id)
+    user_id = _user(x_user_id, authorization)
+    limiter.check("checkout_membership", user_id, max=5, per_seconds=60)
     if body.plan not in ("standard", "premium"):
         raise HTTPException(400, "Invalid plan")
 
@@ -128,6 +133,7 @@ async def checkout_membership(
 @router.post("/confirm-session")
 async def confirm_session(
     body: dict,
+    authorization: str | None = Header(default=None, alias="Authorization"),
     x_user_id: str | None = Header(default=None),
 ) -> dict:
     """Confirm a single Checkout Session by id.
@@ -137,7 +143,7 @@ async def confirm_session(
     a no-op. Solves the case where Stripe's webhook delivery is delayed,
     rate-limited, or misconfigured.
     """
-    user_id = _user(x_user_id)
+    user_id = _user(x_user_id, authorization)
     session_id = (body or {}).get("session_id")
     if not session_id:
         raise HTTPException(400, "session_id required")
@@ -211,9 +217,10 @@ async def confirm_session(
 
 
 @router.get("/debug/me")
-async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
+async def debug_me(authorization: str | None = Header(default=None, alias="Authorization"),
+    x_user_id: str | None = Header(default=None)) -> dict:
     """List recent Stripe activity tied to this user — diagnostic only."""
-    user_id = _user(x_user_id)
+    user_id = _user(x_user_id, authorization)
     if not stripe_client.is_live():
         return {"ok": True, "mock": True}
 
@@ -306,7 +313,8 @@ async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
 
 
 @router.post("/sync")
-async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict:
+async def sync_from_stripe(authorization: str | None = Header(default=None, alias="Authorization"),
+    x_user_id: str | None = Header(default=None)) -> dict:
     """Recover any active subscription on the user's Stripe account.
 
     Falls back to listing recent active subscriptions whose
@@ -314,7 +322,7 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
     (events not subscribed, URL typo, network) so users who paid still
     get their Premium.
     """
-    user_id = _user(x_user_id)
+    user_id = _user(x_user_id, authorization)
     if not stripe_client.is_live():
         return {"ok": True, "mock": True}
 
@@ -420,8 +428,9 @@ async def sync_from_stripe(x_user_id: str | None = Header(default=None)) -> dict
 # ---------- Customer portal ---------------------------------------------------
 
 @router.post("/portal")
-async def customer_portal(x_user_id: str | None = Header(default=None)) -> dict:
-    user_id = _user(x_user_id)
+async def customer_portal(authorization: str | None = Header(default=None, alias="Authorization"),
+    x_user_id: str | None = Header(default=None)) -> dict:
+    user_id = _user(x_user_id, authorization)
     row = memberships_db.get(user_id)
     cust_id = row.get("stripe_customer_id")
     if not cust_id:
