@@ -14,9 +14,11 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 
 from cache import cache
+from services import memberships
+from storage import memberships_db
 from storage.off_market_db import query as db_query, get_one, source_counts
 
 log = logging.getLogger(__name__)
@@ -41,6 +43,25 @@ def _parse_states(states: str | None, state: str | None) -> list[str] | None:
     return None
 
 
+def _enforce_state_limit(state_list: list[str] | None, x_user_id: str | None) -> list[str] | None:
+    """Premium = nationwide. Free/Standard cap at one state per request.
+
+    No-op when no state filter is applied (the home feed remains the
+    same for everyone). When a user picks 2+ states without Premium,
+    we silently truncate to the first state and let the frontend's
+    upgrade nudge handle UX.
+    """
+    if not state_list or len(state_list) <= 1:
+        return state_list
+    user_id = (x_user_id or "").strip()[:64]
+    if not user_id:
+        return state_list[:1]
+    plan = memberships_db.get(user_id).get("plan", "free")
+    if memberships.can_search_nationwide(plan):
+        return state_list
+    return state_list[:1]
+
+
 @router.get("")
 async def list_off_market(
     source: SOURCE_TYPES = "all",
@@ -55,8 +76,9 @@ async def list_off_market(
     min_sqft: int | None = Query(None, ge=0),
     max_sqft: int | None = Query(None, ge=0),
     limit: int = Query(60, ge=1, le=300),
+    x_user_id: str | None = Header(default=None),
 ) -> dict:
-    state_list = _parse_states(states, state)
+    state_list = _enforce_state_limit(_parse_states(states, state), x_user_id)
     cache_key = (
         f"off-market:list:{source}:{','.join(state_list) if state_list else 'any'}:{county or 'any'}:"
         f"{property_type or 'any'}:{min_value or 0}:{max_value or 0}:"
@@ -161,13 +183,14 @@ async def all_pins(
     min_baths: float | None = Query(None, ge=0),
     min_sqft: int | None = Query(None, ge=0),
     max_sqft: int | None = Query(None, ge=0),
+    x_user_id: str | None = Header(default=None),
 ) -> dict:
     """Lightweight pin payload for the map — every parcel with coordinates.
 
     Returns only the fields needed to render a marker (parcel_key, lat,
     lng, score-driving fields). Cached for 5 min. Up to 10k pins.
     """
-    state_list = _parse_states(states, state)
+    state_list = _enforce_state_limit(_parse_states(states, state), x_user_id)
     cache_key = (
         f"off-market:pins:{','.join(state_list) if state_list else 'any'}:{source}:{property_type or 'any'}:"
         f"{min_value or 0}:{max_value or 0}:{min_beds or 0}:{min_baths or 0}:{min_sqft or 0}:{max_sqft or 0}"

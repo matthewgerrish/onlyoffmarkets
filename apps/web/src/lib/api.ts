@@ -1,3 +1,5 @@
+import { apiHeaders } from './tokens';
+
 const API_BASE = (import.meta.env.VITE_API_BASE as string | undefined) ?? 'http://localhost:8001';
 
 export type ApiSource =
@@ -91,13 +93,13 @@ export async function listOffMarket(params: ListParams = {}): Promise<OffMarketL
   if (typeof params.max_sqft === 'number') url.searchParams.set('max_sqft', String(params.max_sqft));
   if (params.limit) url.searchParams.set('limit', String(params.limit));
 
-  const r = await fetch(url.toString());
+  const r = await fetch(url.toString(), { headers: apiHeaders() });
   if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
   return r.json();
 }
 
 export async function getOffMarket(parcelKey: string): Promise<OffMarketDetailResponse> {
-  const r = await fetch(`${API_BASE}/off-market/${encodeURIComponent(parcelKey)}`);
+  const r = await fetch(`${API_BASE}/off-market/${encodeURIComponent(parcelKey)}`, { headers: apiHeaders() });
   if (!r.ok) throw new Error(`API ${r.status}: ${await r.text()}`);
   return r.json();
 }
@@ -162,7 +164,7 @@ export async function getPins(
   if (typeof params.min_baths === 'number') url.searchParams.set('min_baths', String(params.min_baths));
   if (typeof params.min_sqft === 'number') url.searchParams.set('min_sqft', String(params.min_sqft));
   if (typeof params.max_sqft === 'number') url.searchParams.set('max_sqft', String(params.max_sqft));
-  const r = await fetch(url.toString());
+  const r = await fetch(url.toString(), { headers: apiHeaders() });
   if (!r.ok) throw new Error(`API ${r.status}`);
   return r.json();
 }

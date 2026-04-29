@@ -79,6 +79,19 @@ export default function Membership() {
     setBusy(target);
     try {
       const r = await checkoutMembership(target);
+      // Backend dedupe — user already has an active sub. Send them to
+      // the customer portal to change plan instead of double-charging.
+      if ((r as unknown as { duplicate?: boolean }).duplicate) {
+        toast.info('You already have an active subscription — opening the portal');
+        try {
+          const p = await openCustomerPortal();
+          window.location.assign(p.url);
+        } catch {
+          toast.error('Could not open the customer portal');
+        }
+        setBusy(null);
+        return;
+      }
       window.location.assign(r.url);
     } catch (e) {
       toast.error((e as Error).message || 'Checkout failed');

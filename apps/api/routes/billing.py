@@ -95,6 +95,20 @@ async def checkout_membership(
     user_id = _user(x_user_id)
     if body.plan not in ("standard", "premium"):
         raise HTTPException(400, "Invalid plan")
+
+    # Refuse to create a duplicate subscription. If the user already has
+    # an active sub locally OR on Stripe, route them to the customer portal
+    # for a plan switch instead — prevents the "two subs from two clicks"
+    # case we just hit in QA.
+    existing = memberships_db.get(user_id)
+    if existing.get("plan") in ("standard", "premium") and existing.get("status") == "active":
+        return {
+            "duplicate": True,
+            "current_plan": existing.get("plan"),
+            "customer_id": existing.get("stripe_customer_id"),
+            "message": "Already subscribed — open the customer portal to change plans.",
+        }
+
     plan_meta = memberships.get(body.plan)
     pre_id = (
         stripe_client.PRICE_ID_PREMIUM if body.plan == "premium"
@@ -265,8 +279,9 @@ async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
     except Exception as exc:
         log.exception("debug_me sessions list failed")
         out["sessions_error"] = f"{type(exc).__name__}: {exc}"
-    out["all_recent_sessions"] = sessions
+    # SECURITY: never expose other users' sessions — restrict to caller.
     out["my_sessions"] = [s for s in sessions if s["client_reference_id"] == user_id]
+    out["sessions_count_total"] = len(sessions)
 
     subs: list[dict] = []
     try:
@@ -283,8 +298,9 @@ async def debug_me(x_user_id: str | None = Header(default=None)) -> dict:
     except Exception as exc:
         log.exception("debug_me subs list failed")
         out["subs_error"] = f"{type(exc).__name__}: {exc}"
-    out["all_recent_subscriptions"] = subs
+    # SECURITY: only surface caller's own subscriptions.
     out["my_subscriptions"] = [s for s in subs if s["metadata"].get("user_id") == user_id]
+    out["subscriptions_count_total"] = len(subs)
 
     return out
 
@@ -463,11 +479,19 @@ async def mock_confirm(type: str, user: str, pack: str = "", plan: str = ""):
 async def stripe_webhook(request: Request) -> PlainTextResponse:
     payload = await request.body()
     sig = request.headers.get("stripe-signature", "")
+
+    # Fail-closed: if Stripe is live but webhook signing secret is unset,
+    # any unsigned POST could grant entitlements. Refuse instead of accepting.
+    import os
+    if os.environ.get("STRIPE_SECRET_KEY") and not os.environ.get("STRIPE_WEBHOOK_SECRET"):
+        log.error("Webhook hit in live mode without STRIPE_WEBHOOK_SECRET — refusing")
+        raise HTTPException(503, "Webhook secret not configured")
+
     try:
         event = stripe_client.verify_webhook(payload, sig)
     except RuntimeError:
-        # Webhook secret not configured — accept silently in dev.
-        log.warning("Stripe webhook hit without STRIPE_WEBHOOK_SECRET")
+        # Dev mode (no key, no secret) — accept silently to keep ergonomics.
+        log.warning("Stripe webhook hit without STRIPE_WEBHOOK_SECRET (dev only)")
         return PlainTextResponse("ok", status_code=200)
     except Exception as exc:
         log.exception("Stripe webhook signature verification failed: %s", exc)
