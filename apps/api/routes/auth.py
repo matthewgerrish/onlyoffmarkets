@@ -154,6 +154,33 @@ async def me(authorization: str | None = Header(default=None)) -> dict:
     return {"user_id": row["id"], "email": row.get("email"), "session_exp": payload.get("exp")}
 
 
+@router.get("/debug/email-config")
+async def debug_email_config() -> dict:
+    """Returns the SHAPE of email config — never the secret value.
+
+    Helps diagnose 401s from Resend without exposing the key. Looks
+    for whitespace/newlines that could have crept in via copy-paste.
+    """
+    key = os.environ.get("RESEND_API_KEY", "")
+    frm = os.environ.get("RESEND_FROM", "")
+    return {
+        "resend_api_key": {
+            "set": bool(key),
+            "length": len(key),
+            "prefix": key[:4] if key else "",
+            "starts_with_re_": key.startswith("re_"),
+            "has_whitespace": any(c.isspace() for c in key),
+            "has_newline": "\n" in key or "\r" in key,
+            "has_quotes": any(c in key for c in ('"', "'")),
+        },
+        "resend_from": {
+            "set": bool(frm),
+            "length": len(frm),
+            "value": frm if "@" in frm else None,  # FROM is not secret
+        },
+    }
+
+
 @router.post("/logout")
 async def logout() -> dict:
     # JWTs are stateless — server-side logout is a no-op. Frontend
