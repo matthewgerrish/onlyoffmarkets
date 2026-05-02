@@ -153,28 +153,29 @@ def send_magic_link(to: str, link: str) -> dict[str, Any]:
     border-radius:28px;overflow:hidden;
     box-shadow:0 30px 80px -30px rgba(15,31,61,0.18),0 12px 28px -12px rgba(29,108,242,0.10);">
 
-    <!-- Header — animated icon mark + wordmark, navy/blue split. Logo
-         spins slowly via CSS animation in clients that honor it; the
-         static centered icon also looks correct in Outlook. -->
-    <tr><td class="oom-pad" align="center"
-      style="padding:32px 36px 24px 36px;border-bottom:1px solid #f1f5f9;">
-      <div style="width:72px;height:72px;margin:0 auto 16px auto;
-        background:radial-gradient(closest-side,{_BRAND_50} 0%,#ffffff 70%);
-        border-radius:999px;line-height:0;font-size:0;">
-        <img src="{_LOGO_URL}" alt=""
-          width="72" height="72"
-          class="oom-spin"
-          style="display:block;border:0;outline:none;width:72px;height:72px;
-          margin:0 auto;">
-      </div>
-      <div style="line-height:1;">
-        <span style="font-family:{_FONT_STACK};font-weight:800;font-size:24px;
-          letter-spacing:-0.02em;color:{_BRAND_NAVY};">Only</span><span
-          style="font-family:{_FONT_STACK};font-weight:800;font-size:24px;
-          letter-spacing:-0.02em;color:{_BRAND_PRIMARY};">OffMarkets</span><span
-          style="font-family:{_FONT_STACK};font-weight:600;font-size:24px;
-          letter-spacing:-0.02em;color:{_BRAND_NAVY};">.com</span>
-      </div>
+    <!-- Header — logo + wordmark side-by-side, exactly like the
+         site header. Two-column table so Outlook/Gmail render
+         correctly; vertical-align:middle keeps wordmark optically
+         centered against the icon. Logo still spins via CSS. -->
+    <tr><td class="oom-pad" style="padding:24px 32px;border-bottom:1px solid #f1f5f9;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0">
+        <tr>
+          <td style="vertical-align:middle;line-height:0;font-size:0;padding-right:6px;">
+            <img src="{_LOGO_URL}" alt=""
+              width="56" height="56"
+              class="oom-spin"
+              style="display:block;border:0;outline:none;width:56px;height:56px;">
+          </td>
+          <td style="vertical-align:middle;line-height:1;white-space:nowrap;">
+            <span style="font-family:{_FONT_STACK};font-weight:800;font-size:26px;
+              letter-spacing:-0.02em;color:{_BRAND_NAVY};">Only</span><span
+              style="font-family:{_FONT_STACK};font-weight:800;font-size:26px;
+              letter-spacing:-0.02em;color:{_BRAND_PRIMARY};">OffMarkets</span><span
+              style="font-family:{_FONT_STACK};font-weight:600;font-size:26px;
+              letter-spacing:-0.02em;color:{_BRAND_NAVY};">.com</span>
+          </td>
+        </tr>
+      </table>
     </td></tr>
 
     <!-- Hero — short, functional, no marketing -->
