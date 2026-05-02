@@ -69,7 +69,7 @@ _BRAND_PRIMARY_DARK = "#0a6bd6"
 _BRAND_PRIMARY_LIGHT = "#5fa0ff"
 _BRAND_NAVY = "#0f1f3d"
 _BRAND_50 = "#e8f1ff"
-_LOGO_URL = "https://onlyoffmarkets.com/logo.png"
+_LOGO_URL = "https://onlyoffmarkets.com/icon.png"  # 256x256 square icon-only mark
 _PUBLIC_WEB_URL = "https://onlyoffmarkets.com"
 _FONT_STACK = (
     "'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', "
@@ -96,6 +96,18 @@ def send_magic_link(to: str, link: str) -> dict[str, Any]:
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap');
   :root {{ color-scheme: light; supported-color-schemes: light; }}
+
+  /* Slow rotation for the brand mark in the header. Gmail web, Apple
+     Mail and iOS Mail honor CSS animations in <style>; Outlook
+     strips them and shows the static logo. Both look good. */
+  @keyframes oom-spin {{
+    0%   {{ transform: rotate(0deg); }}
+    100% {{ transform: rotate(360deg); }}
+  }}
+  .oom-spin {{
+    animation: oom-spin 8s linear infinite;
+    transform-origin: 50% 50%;
+  }}
 
   /* Tactile button — clients that honor :hover get a lift. */
   .oom-cta {{
@@ -141,14 +153,28 @@ def send_magic_link(to: str, link: str) -> dict[str, Any]:
     border-radius:28px;overflow:hidden;
     box-shadow:0 30px 80px -30px rgba(15,31,61,0.18),0 12px 28px -12px rgba(29,108,242,0.10);">
 
-    <!-- Header bar — wordmark only, navy/blue split exactly like the site -->
-    <tr><td class="oom-pad" style="padding:26px 36px;border-bottom:1px solid #f1f5f9;">
-      <span style="font-family:{_FONT_STACK};font-weight:800;font-size:24px;
-        letter-spacing:-0.02em;color:{_BRAND_NAVY};">Only</span><span
-        style="font-family:{_FONT_STACK};font-weight:800;font-size:24px;
-        letter-spacing:-0.02em;color:{_BRAND_PRIMARY};">OffMarkets</span><span
-        style="font-family:{_FONT_STACK};font-weight:600;font-size:24px;
-        letter-spacing:-0.02em;color:{_BRAND_NAVY};">.com</span>
+    <!-- Header — animated icon mark + wordmark, navy/blue split. Logo
+         spins slowly via CSS animation in clients that honor it; the
+         static centered icon also looks correct in Outlook. -->
+    <tr><td class="oom-pad" align="center"
+      style="padding:32px 36px 24px 36px;border-bottom:1px solid #f1f5f9;">
+      <div style="width:72px;height:72px;margin:0 auto 16px auto;
+        background:radial-gradient(closest-side,{_BRAND_50} 0%,#ffffff 70%);
+        border-radius:999px;line-height:0;font-size:0;">
+        <img src="{_LOGO_URL}" alt=""
+          width="72" height="72"
+          class="oom-spin"
+          style="display:block;border:0;outline:none;width:72px;height:72px;
+          margin:0 auto;">
+      </div>
+      <div style="line-height:1;">
+        <span style="font-family:{_FONT_STACK};font-weight:800;font-size:24px;
+          letter-spacing:-0.02em;color:{_BRAND_NAVY};">Only</span><span
+          style="font-family:{_FONT_STACK};font-weight:800;font-size:24px;
+          letter-spacing:-0.02em;color:{_BRAND_PRIMARY};">OffMarkets</span><span
+          style="font-family:{_FONT_STACK};font-weight:600;font-size:24px;
+          letter-spacing:-0.02em;color:{_BRAND_NAVY};">.com</span>
+      </div>
     </td></tr>
 
     <!-- Hero — short, functional, no marketing -->
