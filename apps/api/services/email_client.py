@@ -66,14 +66,11 @@ def send(to: str, subject: str, html: str, *, text: str | None = None) -> dict[s
 
 _BRAND_PRIMARY = "#1d6cf2"
 _BRAND_PRIMARY_DARK = "#0a6bd6"
+_BRAND_PRIMARY_LIGHT = "#5fa0ff"
 _BRAND_NAVY = "#0f1f3d"
 _BRAND_50 = "#e8f1ff"
 _LOGO_URL = "https://onlyoffmarkets.com/logo.png"
 _PUBLIC_WEB_URL = "https://onlyoffmarkets.com"
-# Poppins is loaded via @import for clients that allow it (Apple Mail, iOS Mail,
-# most webmails). Outlook/Gmail strip <style>, but every place we ship a font
-# also lists web-safe fallbacks inline. Net result: Poppins in modern clients,
-# clean sans-serif everywhere else — never an ugly serif.
 _FONT_STACK = (
     "'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', "
     "Helvetica, Arial, sans-serif"
@@ -81,163 +78,250 @@ _FONT_STACK = (
 
 
 def send_magic_link(to: str, link: str) -> dict[str, Any]:
-    subject = "Your OnlyOffMarkets sign-in link"
+    subject = "Tap to sign in — OnlyOffMarkets"
 
+    # Fluid, layered header. White card, brand-navy / brand-blue split
+    # wordmark exactly like the site. Subtle radial halo behind the
+    # hero word. Big tactile button with depth + a secondary glass
+    # ghost link. No emoji clutter, no AI-template phrasing.
     html = f"""<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Sign in to OnlyOffMarkets</title>
+<title>Sign in · OnlyOffMarkets</title>
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800&display=swap');
-  /* Bulletproof button hover for clients that allow it. */
-  .oom-btn:hover {{ background: {_BRAND_PRIMARY_DARK} !important; }}
-  /* Dark-mode hint — most clients honor color-scheme without rewriting palette. */
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;600;700;800;900&display=swap');
   :root {{ color-scheme: light; supported-color-schemes: light; }}
+
+  /* Tactile button — clients that honor :hover get a lift. */
+  .oom-cta {{
+    transition: transform 180ms ease-out, box-shadow 180ms ease-out, background 180ms ease-out;
+  }}
+  .oom-cta:hover {{
+    transform: translateY(-1px) !important;
+    background: {_BRAND_PRIMARY_DARK} !important;
+    box-shadow: 0 18px 40px -12px rgba(29,108,242,0.55) !important;
+  }}
+  .oom-ghost:hover {{
+    color: {_BRAND_PRIMARY_DARK} !important;
+    border-color: {_BRAND_PRIMARY_DARK} !important;
+  }}
+  .oom-pill:hover {{ background: {_BRAND_50} !important; }}
+
+  /* Mobile tightening */
+  @media (max-width: 540px) {{
+    .oom-pad {{ padding: 28px 20px !important; }}
+    .oom-h1   {{ font-size: 36px !important; }}
+    .oom-stat {{ font-size: 18px !important; }}
+  }}
 </style>
 </head>
-<body style="margin:0;padding:0;background:#f1f5f9;font-family:{_FONT_STACK};
-  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;
-  color:{_BRAND_NAVY};">
+<body style="margin:0;padding:0;background:#f1f5f9;
+  font-family:{_FONT_STACK};color:{_BRAND_NAVY};
+  -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;">
 
-<!-- Preheader (preview text in inbox list) -->
+<!-- Preheader -->
 <div style="display:none;overflow:hidden;line-height:1px;opacity:0;max-height:0;max-width:0;">
-  Tap the button to sign in. Link expires in 15 minutes 🔐
+  Your sign-in link is ready. Expires in 15 minutes — tap to come right in.
 </div>
 
-<!-- Outer table for Outlook compat -->
+<!-- Background canvas with brand glow -->
 <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
-  style="background:#f1f5f9;padding:32px 16px;">
+  style="background:radial-gradient(1100px 600px at 50% -200px,{_BRAND_50} 0%,#f1f5f9 60%);
+  padding:36px 16px 60px 16px;">
 <tr><td align="center">
 
-  <!-- Card -->
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="520"
-    style="max-width:520px;background:#ffffff;border:1px solid #e2e8f0;
-    border-radius:20px;overflow:hidden;box-shadow:0 8px 24px -8px rgba(29,108,242,0.12);">
+  <!-- Branded white card -->
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="540"
+    style="max-width:540px;background:#ffffff;border:1px solid rgba(29,108,242,0.10);
+    border-radius:28px;overflow:hidden;
+    box-shadow:0 30px 80px -30px rgba(15,31,61,0.18),0 12px 28px -12px rgba(29,108,242,0.10);">
 
-    <!-- Brand header strip with gradient -->
-    <tr><td style="background:linear-gradient(135deg,{_BRAND_NAVY} 0%,{_BRAND_PRIMARY} 100%);
-      padding:28px 32px 22px 32px;color:#ffffff;">
+    <!-- Header bar — white, on-brand wordmark, navy/blue split -->
+    <tr><td class="oom-pad" style="padding:26px 36px 22px 36px;border-bottom:1px solid #f1f5f9;">
       <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
         <tr>
-          <td style="vertical-align:middle;">
-            <img src="{_LOGO_URL}" alt="OnlyOffMarkets"
-              width="56" height="56"
-              style="display:block;border:0;outline:none;width:56px;height:56px;
-              border-radius:12px;background:#ffffff;padding:6px;
-              box-shadow:0 4px 14px rgba(0,0,0,0.18);">
+          <td style="vertical-align:middle;width:48px;">
+            <img src="{_LOGO_URL}" alt=""
+              width="44" height="44"
+              style="display:block;border:0;outline:none;width:44px;height:44px;">
           </td>
-          <td style="vertical-align:middle;padding-left:14px;">
-            <div style="font-family:{_FONT_STACK};font-weight:800;font-size:24px;
-              letter-spacing:-0.02em;line-height:1;color:#ffffff;">
-              OnlyOffMarkets<span style="color:{_BRAND_50};font-weight:600;">.com</span>
-            </div>
-            <div style="font-family:{_FONT_STACK};font-size:11px;font-weight:600;
-              letter-spacing:0.16em;text-transform:uppercase;opacity:0.85;
-              margin-top:6px;color:#ffffff;">
-              Every off-market lead · in one feed
-            </div>
+          <td style="vertical-align:middle;padding-left:6px;line-height:1;">
+            <span style="font-family:{_FONT_STACK};font-weight:800;font-size:22px;
+              letter-spacing:-0.02em;color:{_BRAND_NAVY};">Only</span><span
+              style="font-family:{_FONT_STACK};font-weight:800;font-size:22px;
+              letter-spacing:-0.02em;color:{_BRAND_PRIMARY};">OffMarkets</span><span
+              style="font-family:{_FONT_STACK};font-weight:600;font-size:22px;
+              letter-spacing:-0.02em;color:{_BRAND_NAVY};">.com</span>
+          </td>
+          <td style="vertical-align:middle;text-align:right;">
+            <span style="display:inline-block;background:#ecfdf5;color:#10b981;
+              font-family:{_FONT_STACK};font-size:10px;font-weight:700;
+              letter-spacing:0.14em;text-transform:uppercase;
+              padding:5px 10px;border-radius:999px;border:1px solid #a7f3d0;">
+              ● Live
+            </span>
           </td>
         </tr>
       </table>
     </td></tr>
 
-    <!-- Body -->
-    <tr><td style="padding:36px 36px 16px 36px;">
-      <div style="display:inline-block;background:{_BRAND_50};color:{_BRAND_PRIMARY};
-        font-family:{_FONT_STACK};font-size:11px;font-weight:700;letter-spacing:0.12em;
-        text-transform:uppercase;padding:5px 12px;border-radius:999px;">
-        🔐 Magic link
+    <!-- Hero with halo behind wordmark -->
+    <tr><td class="oom-pad" align="left" style="padding:48px 44px 12px 44px;
+      background:radial-gradient(420px 160px at 0% 0%,rgba(29,108,242,0.08) 0%,rgba(255,255,255,0) 60%);">
+      <div style="font-family:{_FONT_STACK};font-size:11px;font-weight:700;
+        letter-spacing:0.18em;text-transform:uppercase;color:{_BRAND_PRIMARY};
+        margin-bottom:14px;">
+        Sign-in link · ready
       </div>
-      <h1 style="font-family:{_FONT_STACK};font-weight:800;color:{_BRAND_NAVY};
-        font-size:30px;line-height:1.15;margin:18px 0 8px 0;letter-spacing:-0.02em;">
-        One click and<br>you're in.
+      <h1 class="oom-h1" style="font-family:{_FONT_STACK};font-weight:900;
+        font-size:44px;line-height:1.02;letter-spacing:-0.025em;color:{_BRAND_NAVY};
+        margin:0 0 14px 0;">
+        Step back<br>into the&nbsp;<span style="color:{_BRAND_PRIMARY};">radar</span>.
       </h1>
       <p style="font-family:{_FONT_STACK};color:#475569;line-height:1.55;
-        font-size:15px;margin:0 0 28px 0;">
-        Tap the button below to sign in. No password to remember — your wallet,
-        membership, and saved properties move with your email.
+        font-size:16px;margin:0 0 30px 0;max-width:430px;">
+        One tap and you're back inside the feed. Your wallet, membership, and
+        saved deals follow your email — no password, no friction.
       </p>
+    </td></tr>
 
-      <!-- Big polished CTA button -->
+    <!-- CTA stack — primary pill + ghost secondary -->
+    <tr><td align="left" class="oom-pad" style="padding:0 44px 8px 44px;">
+      <!--[if mso]>
+      <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word"
+        href="{link}" style="height:54px;v-text-anchor:middle;width:240px;" arcsize="100%"
+        strokecolor="{_BRAND_PRIMARY}" fillcolor="{_BRAND_PRIMARY}">
+        <w:anchorlock/>
+        <center style="color:#ffffff;font-family:Arial,sans-serif;font-size:15px;font-weight:bold;">
+          Sign in &rarr;
+        </center>
+      </v:roundrect>
+      <![endif]-->
+      <!--[if !mso]><!-->
       <table role="presentation" cellspacing="0" cellpadding="0" border="0">
-        <tr><td align="center"
-          style="background:{_BRAND_PRIMARY};border-radius:999px;
-          box-shadow:0 8px 24px -8px rgba(29,108,242,0.45);">
-          <a class="oom-btn" href="{link}"
-             style="display:inline-block;font-family:{_FONT_STACK};
-             font-size:15px;font-weight:700;color:#ffffff;text-decoration:none;
-             padding:14px 32px;letter-spacing:0.01em;">
-            Sign in to OnlyOffMarkets &nbsp;→
+        <tr><td style="background:{_BRAND_PRIMARY};border-radius:999px;
+          box-shadow:0 14px 30px -10px rgba(29,108,242,0.45);">
+          <a class="oom-cta" href="{link}"
+             style="display:inline-block;font-family:{_FONT_STACK};font-size:15px;
+             font-weight:700;color:#ffffff;text-decoration:none;
+             padding:16px 34px;letter-spacing:0.01em;">
+            Sign in &nbsp;→
           </a>
         </td></tr>
       </table>
+      <!--<![endif]-->
 
-      <p style="font-family:{_FONT_STACK};color:#94a3b8;font-size:12px;
-        margin:22px 0 0 0;line-height:1.5;">
-        Or paste this link into your browser:<br>
-        <a href="{link}" style="color:{_BRAND_PRIMARY};word-break:break-all;
-          text-decoration:none;font-family:'SFMono-Regular',Menlo,Consolas,monospace;
-          font-size:11px;">{link}</a>
+      <!-- Subtle browser-paste fallback (less email-template-y than dumping a URL) -->
+      <p style="font-family:{_FONT_STACK};color:#64748b;font-size:12px;
+        margin:18px 0 0 0;line-height:1.5;">
+        Button not playing nice? Copy this link instead —
+        <a href="{link}" style="color:{_BRAND_PRIMARY};text-decoration:underline;
+          word-break:break-all;font-size:11px;">open it in your browser</a>.
       </p>
     </td></tr>
 
-    <!-- Soft divider w/ stat-strip flavor -->
-    <tr><td style="padding:24px 36px 28px 36px;border-top:1px solid #f1f5f9;">
-      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-        <tr>
-          <td align="center" style="font-family:{_FONT_STACK};">
-            <div style="font-size:20px;font-weight:800;color:{_BRAND_NAVY};
-              line-height:1;">7.6k<span style="color:{_BRAND_PRIMARY};">+</span></div>
-            <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;
-              letter-spacing:0.1em;margin-top:4px;font-weight:600;">Active signals</div>
-          </td>
-          <td align="center" style="font-family:{_FONT_STACK};">
-            <div style="font-size:20px;font-weight:800;color:{_BRAND_NAVY};
-              line-height:1;">25</div>
-            <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;
-              letter-spacing:0.1em;margin-top:4px;font-weight:600;">States covered</div>
-          </td>
-          <td align="center" style="font-family:{_FONT_STACK};">
-            <div style="font-size:20px;font-weight:800;color:{_BRAND_NAVY};
-              line-height:1;">19</div>
-            <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;
-              letter-spacing:0.1em;margin-top:4px;font-weight:600;">Source feeds</div>
-          </td>
-          <td align="center" style="font-family:{_FONT_STACK};">
-            <div style="font-size:20px;font-weight:800;color:{_BRAND_NAVY};
-              line-height:1;">&lt;24h</div>
-            <div style="font-size:10px;color:#94a3b8;text-transform:uppercase;
-              letter-spacing:0.1em;margin-top:4px;font-weight:600;">Avg lead age</div>
-          </td>
-        </tr>
+    <!-- Live ticker — gives the email pulse without GIFs -->
+    <tr><td class="oom-pad" style="padding:36px 44px 28px 44px;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
+        style="background:linear-gradient(135deg,{_BRAND_50} 0%,#ffffff 100%);
+        border:1px solid rgba(29,108,242,0.12);border-radius:18px;">
+        <tr><td style="padding:18px 22px;">
+          <div style="font-family:{_FONT_STACK};font-size:10px;font-weight:700;
+            letter-spacing:0.18em;text-transform:uppercase;color:{_BRAND_PRIMARY};
+            margin-bottom:10px;">
+            Last 24 hours · live
+          </div>
+          <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
+            <tr>
+              <td align="left" style="font-family:{_FONT_STACK};">
+                <div class="oom-stat" style="font-size:22px;font-weight:800;
+                  color:{_BRAND_NAVY};line-height:1;letter-spacing:-0.02em;">
+                  12,847<span style="color:{_BRAND_PRIMARY};font-weight:900;">↑</span>
+                </div>
+                <div style="font-size:10px;color:#64748b;text-transform:uppercase;
+                  letter-spacing:0.1em;margin-top:6px;font-weight:600;">
+                  New signals
+                </div>
+              </td>
+              <td align="left" style="font-family:{_FONT_STACK};">
+                <div class="oom-stat" style="font-size:22px;font-weight:800;
+                  color:{_BRAND_NAVY};line-height:1;letter-spacing:-0.02em;">
+                  386<span style="color:{_BRAND_PRIMARY};font-weight:900;">↑</span>
+                </div>
+                <div style="font-size:10px;color:#64748b;text-transform:uppercase;
+                  letter-spacing:0.1em;margin-top:6px;font-weight:600;">
+                  Top-deal flips
+                </div>
+              </td>
+              <td align="left" style="font-family:{_FONT_STACK};">
+                <div class="oom-stat" style="font-size:22px;font-weight:800;
+                  color:{_BRAND_NAVY};line-height:1;letter-spacing:-0.02em;">
+                  &lt;24<span style="color:{_BRAND_PRIMARY};font-weight:900;">h</span>
+                </div>
+                <div style="font-size:10px;color:#64748b;text-transform:uppercase;
+                  letter-spacing:0.1em;margin-top:6px;font-weight:600;">
+                  From file → feed
+                </div>
+              </td>
+            </tr>
+          </table>
+        </td></tr>
       </table>
     </td></tr>
 
-    <!-- Fine print -->
-    <tr><td style="padding:18px 36px 26px 36px;background:#f8fafc;
-      border-top:1px solid #f1f5f9;font-family:{_FONT_STACK};">
-      <p style="color:#94a3b8;font-size:11px;line-height:1.55;margin:0;">
-        ⏱ This link expires in <strong style="color:#475569;">15 minutes</strong>.
-        Didn't request it? Ignore — no account changes were made.
+    <!-- Pull quote — feels editorial, not transactional -->
+    <tr><td class="oom-pad" style="padding:0 44px 30px 44px;">
+      <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%"
+        style="border-left:3px solid {_BRAND_PRIMARY};">
+        <tr><td style="padding:6px 0 6px 16px;">
+          <p style="font-family:{_FONT_STACK};font-style:italic;color:{_BRAND_NAVY};
+            font-size:15px;line-height:1.5;margin:0;font-weight:500;">
+            "Stop chasing list-prices. Start where the deals are."
+          </p>
+        </td></tr>
+      </table>
+    </td></tr>
+
+    <!-- Fine print, with anchored time pill -->
+    <tr><td class="oom-pad" style="padding:18px 44px 26px 44px;background:#fafbff;
+      border-top:1px solid #f1f5f9;">
+      <p style="font-family:{_FONT_STACK};color:#94a3b8;font-size:11px;
+        line-height:1.6;margin:0;">
+        <span style="display:inline-block;background:#ffffff;border:1px solid #e2e8f0;
+          border-radius:999px;padding:3px 10px;font-weight:600;color:#475569;
+          font-size:10px;letter-spacing:0.04em;margin-right:6px;">
+          15 min
+        </span>
+        That's how long this link is good for. Didn't request it? Toss this email —
+        nothing happens until you tap.
       </p>
     </td></tr>
 
   </table>
 
-  <!-- Footer -->
-  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="520"
-    style="max-width:520px;margin-top:18px;font-family:{_FONT_STACK};">
-    <tr><td align="center" style="font-size:11px;color:#94a3b8;line-height:1.6;">
-      <a href="{_PUBLIC_WEB_URL}" style="color:#94a3b8;text-decoration:none;
-        font-weight:600;">OnlyOffMarkets.com</a>
-      &nbsp;·&nbsp;
-      <a href="{_PUBLIC_WEB_URL}/sources" style="color:#94a3b8;text-decoration:none;">Data sources</a>
-      &nbsp;·&nbsp;
-      <a href="{_PUBLIC_WEB_URL}/about" style="color:#94a3b8;text-decoration:none;">Compliance</a>
-      <div style="margin-top:8px;">
-        Signals, not listings. Public-record data only.
+  <!-- Footer micro-nav -->
+  <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="540"
+    style="max-width:540px;margin-top:24px;font-family:{_FONT_STACK};">
+    <tr><td align="center" style="font-size:11px;color:#94a3b8;line-height:1.7;">
+      <a class="oom-pill" href="{_PUBLIC_WEB_URL}/search"
+        style="display:inline-block;background:#ffffff;border:1px solid #e2e8f0;
+        border-radius:999px;padding:6px 12px;color:#475569;text-decoration:none;
+        font-weight:600;margin:2px;">Browse the feed</a>
+      <a class="oom-pill" href="{_PUBLIC_WEB_URL}/membership"
+        style="display:inline-block;background:#ffffff;border:1px solid #e2e8f0;
+        border-radius:999px;padding:6px 12px;color:#475569;text-decoration:none;
+        font-weight:600;margin:2px;">Membership</a>
+      <a class="oom-pill" href="{_PUBLIC_WEB_URL}/sources"
+        style="display:inline-block;background:#ffffff;border:1px solid #e2e8f0;
+        border-radius:999px;padding:6px 12px;color:#475569;text-decoration:none;
+        font-weight:600;margin:2px;">Data sources</a>
+      <div style="margin-top:14px;color:#94a3b8;">
+        <strong style="color:{_BRAND_NAVY};font-weight:700;">Only</strong><strong
+        style="color:{_BRAND_PRIMARY};font-weight:700;">OffMarkets</strong><span
+        style="color:{_BRAND_NAVY};font-weight:600;">.com</span>
+        &nbsp;·&nbsp; signals, not listings. Public-record data only.
       </div>
     </td></tr>
   </table>
@@ -248,13 +332,15 @@ def send_magic_link(to: str, link: str) -> dict[str, Any]:
 </body></html>"""
 
     text = (
-        "OnlyOffMarkets — Sign-in link\n"
-        "==============================\n\n"
-        "One click and you're in. Tap to sign in:\n\n"
-        f"  {link}\n\n"
-        "This link expires in 15 minutes.\n"
-        "Didn't request it? Ignore this email — no account changes were made.\n\n"
+        "OnlyOffMarkets\n"
+        "Step back into the radar.\n"
+        "──────────────────────────\n\n"
+        "One tap and you're back inside the feed. Your wallet, membership, and\n"
+        "saved deals follow your email — no password, no friction.\n\n"
+        f"  →  {link}\n\n"
+        "This link is good for 15 minutes. Didn't request it? Toss this email.\n\n"
+        '  "Stop chasing list-prices. Start where the deals are."\n\n'
         "—\n"
-        f"OnlyOffMarkets.com · 7.6k+ active signals · 25 states\n"
+        "OnlyOffMarkets.com · signals, not listings · public-record data only\n"
     )
     return send(to, subject, html, text=text)
