@@ -52,6 +52,7 @@ from scrapers.batchdata import (
     PreforeclosureBD, AuctionBD, TaxLienBD,
     VacantBD, AbsenteeBD, HighEquityBD,
 )
+from scrapers.nyc_violations import NYCViolationsScraper
 
 from storage.off_market_db import upsert
 from storage import scraper_runs_db
@@ -85,11 +86,17 @@ SCRAPERS: dict[str, Type[BaseScraper]] = {
     "attom-absentee":    AttomAbsenteeScraper,
     "attom-national":    AttomNationalScraper,
 
-    # ---- NATIONWIDE (free + public) ----
-    "hud-homestore":   HudHomestoreScraper,    # HUD REO listings
-    "homepath":        HomePathScraper,         # Fannie Mae REO
-    "auction-com":     AuctionComScraper,       # Auction.com search feed
-    "craigslist-fsbo": CraigslistFSBOScraper,  # RSS-based FSBO
+    # ---- NATIONWIDE / CITY (free + public) ----
+    "nyc-violations":  NYCViolationsScraper,   # NYC DOB violations (Socrata)
+
+    # The four below need browser-rendered scraping — they hit ASP.NET /
+    # JS-driven endpoints and yield ~0 with pure HTTP. Kept registered so
+    # /admin/scrapers shows their (deserved) red status. Replace with
+    # paid PropertyRadar / BatchData equivalents.
+    "hud-homestore":   HudHomestoreScraper,
+    "homepath":        HomePathScraper,
+    "auction-com":     AuctionComScraper,
+    "craigslist-fsbo": CraigslistFSBOScraper,
 
     # ---- LICENSED APIs (other) ----
     "wholesale-il":    WholesaleInvestorLiftScraper,  # InvestorLift wholesaler marketplace
