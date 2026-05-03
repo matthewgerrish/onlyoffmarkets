@@ -7,20 +7,24 @@ import MembershipBadge from './MembershipBadge';
 import LoginModal from './LoginModal';
 import AuthBootstrap from './AuthBootstrap';
 import { useAuth } from './AuthContext';
+import { useMembership } from './MembershipContext';
 import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
 
-/** Primary nav — kept short so the bar fits on standard laptop widths. */
+/** Primary nav — kept short so the bar fits on standard laptop widths.
+ *  Membership lives on the crown badge (right side), not in the nav,
+ *  to avoid the duplicate-Membership-link + Premium-badge collision
+ *  at lg/xl breakpoints. */
 const nav = [
   { to: '/search', label: 'Search', icon: Search },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/mailers', label: 'Mailers', icon: Mail },
   { to: '/tokens', label: 'Tokens', icon: Coins },
-  { to: '/membership', label: 'Membership', icon: Crown },
   { to: '/pricing', label: 'Pricing', icon: DollarSign },
 ];
 
 /** Secondary nav — folded into mobile drawer + footer only. */
 const navSecondary = [
+  { to: '/membership', label: 'Membership', icon: Crown },
   { to: '/sources', label: 'Sources', icon: Database },
   { to: '/about', label: 'About', icon: Info },
 ];
@@ -29,6 +33,7 @@ export default function Layout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const { isAuthed, user, openLogin, signOut } = useAuth();
+  const { isPaid } = useMembership();
 
   return (
     <div className="min-h-screen flex flex-col bg-white">
@@ -122,6 +127,7 @@ export default function Layout() {
         onClose={() => setMenuOpen(false)}
         currentPath={location.pathname}
         isAuthed={isAuthed}
+        isPaid={isPaid}
         userEmail={user?.email || null}
         onSignIn={() => {
           setMenuOpen(false);
@@ -161,6 +167,7 @@ function MobileDrawer({
   onClose,
   currentPath,
   isAuthed,
+  isPaid,
   userEmail,
   onSignIn,
   onSignOut,
@@ -169,6 +176,7 @@ function MobileDrawer({
   onClose: () => void;
   currentPath: string;
   isAuthed: boolean;
+  isPaid: boolean;
   userEmail: string | null;
   onSignIn: () => void;
   onSignOut: () => void | Promise<void>;
@@ -244,7 +252,15 @@ function MobileDrawer({
               Sign in
             </button>
           )}
-          <Link to="/membership" onClick={onClose} className="btn-primary w-full justify-center">Subscribe</Link>
+          {isPaid ? (
+            <Link to="/membership" onClick={onClose} className="btn-outline w-full justify-center">
+              Manage membership
+            </Link>
+          ) : (
+            <Link to="/membership" onClick={onClose} className="btn-primary w-full justify-center">
+              Subscribe
+            </Link>
+          )}
         </div>
       </div>
     </div>
