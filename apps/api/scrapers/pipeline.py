@@ -53,6 +53,9 @@ from scrapers.batchdata import (
     VacantBD, AbsenteeBD, HighEquityBD,
 )
 from scrapers.nyc_violations import NYCViolationsScraper
+from scrapers.chicago_violations import ChicagoViolationsScraper
+from scrapers.sf_permits import SFPermitsScraper
+from scrapers.philly_violations import PhillyViolationsScraper
 
 from storage.off_market_db import upsert
 from storage import scraper_runs_db
@@ -86,8 +89,13 @@ SCRAPERS: dict[str, Type[BaseScraper]] = {
     "attom-absentee":    AttomAbsenteeScraper,
     "attom-national":    AttomNationalScraper,
 
-    # ---- NATIONWIDE / CITY (free + public) ----
-    "nyc-violations":  NYCViolationsScraper,   # NYC DOB violations (Socrata)
+    # ---- CITY (free + public, no API key required) ----
+    # Top-4 metro distress-signal scrapers using each city's open-data
+    # platform (Socrata for NYC/Chicago/SF, Carto for Philly).
+    "nyc-violations":     NYCViolationsScraper,        # NYC DOB violations
+    "chicago-violations": ChicagoViolationsScraper,    # Chicago building violations
+    "sf-permits":         SFPermitsScraper,            # SF stalled permits
+    "philly-violations":  PhillyViolationsScraper,     # Philadelphia L&I violations
 
     # The four below need browser-rendered scraping — they hit ASP.NET /
     # JS-driven endpoints and yield ~0 with pure HTTP. Kept registered so
