@@ -118,3 +118,77 @@ and keep the earliest filing date per tag.
       or corrected (probate, especially) within 72h of notice.
 - [x] Fair Housing: no scraping or filtering on race, family status,
       ethnicity, religion, or any protected class — ever.
+
+---
+
+## Paid commercial sources — comparison + setup (2026)
+
+After the WA-only county scrapers proved fragile (silent breakage on
+selector drift, ~zero leads in production), we layered commercial
+APIs that cover all 50 states from one endpoint.
+
+### Recommended stack (by ROI)
+
+| Provider | Cost | Coverage | Best for | Status |
+|---|---|---|---|---|
+| **PropertyRadar** | $199-$499/mo | 150M+ properties, all 50 states | One-stop nationwide distress (NOD/NTS, auction, tax, probate, vacant, absentee, equity) | **Integrated** — set `PROPERTYRADAR_API_KEY` |
+| **BatchData** | Pay-as-you-go (~$0.07/skip-trace + property API) | Nationwide | Combines property + skip-trace in one row | **Integrated** — same `BATCHDATA_API_KEY` we use for skip-trace |
+| **ATTOM Foreclosure bundle** | ~$300/mo | Nationwide | Foreclosure-specific cross-validation | **Integrated** — `ATTOM_API_KEY` (free 30-day trial) |
+| **REI Data Vault** | ~$50-100/mo | Nationwide | Cheap bulk lists (no real-time) | Not integrated — drop-in pattern available |
+| **PropStream API** | $99 + extras | Nationwide | Alt to PropertyRadar | Not integrated |
+| **CoreLogic** | $1k+/mo | Best in class | Enterprise | Not integrated |
+| **DataTree (First American)** | ~$500/mo | Title-derived | Recorded transactions | Not integrated |
+
+### What each integrated client does
+
+- `services/propertyradar_client.py` — wraps `/v1/properties` with the
+  pre-built criteria blocks for each signal. Mock-safe when the key
+  is unset (returns []).
+- `services/batchdata_client.py` — wraps `/api/v1/property/search`
+  with the same set of distress filters. Same key powers skip-trace
+  in `services/skip_trace_providers.py`.
+- `scrapers/propertyradar.py` — 7 scrapers, one per signal:
+  `pr-preforeclosure`, `pr-auction`, `pr-tax-lien`, `pr-probate`,
+  `pr-vacant`, `pr-absentee`, `pr-high-equity`.
+- `scrapers/batchdata.py` — 6 scrapers mirroring the PropertyRadar
+  set: `bd-preforeclosure`, `bd-auction`, `bd-tax-lien`, `bd-vacant`,
+  `bd-absentee`, `bd-high-equity`.
+
+Both clients paginate state-by-state to avoid payload caps and respect
+provider-side rate limiting (429 → log + skip).
+
+### Activation (Fly secrets)
+
+```bash
+# PropertyRadar — best ROI for nationwide
+fly secrets set PROPERTYRADAR_API_KEY=pr_... -a onlyoffmarkets-api
+
+# BatchData — already set if skip-trace is enabled
+fly secrets set BATCHDATA_API_KEY=batch_... -a onlyoffmarkets-api
+
+# ATTOM — already set; foreclosure bundle just enables more endpoints
+fly secrets set ATTOM_API_KEY=... -a onlyoffmarkets-api
+```
+
+### Observability
+
+Every scraper run is logged to `scraper_runs` (sqlite/pg). Visible at
+`GET /admin/scrapers?token=...&days=14`:
+
+- `state: "green"` — recent run + at least one row persisted
+- `state: "yellow"` — recent run + zero persisted (parser drift?)
+- `state: "red"` — no run in 48h
+- `state: "never"` — registered but never executed
+
+### When to add a new commercial source
+
+Drop `services/<provider>_client.py` + `scrapers/<provider>.py`,
+register the scrapers in `pipeline.py`. The base class
+(`scrapers/base.py`) handles rate-limiting, robots.txt, caching,
+retries, and User-Agent.
+
+### Rule of thumb
+
+If a source's monthly cost exceeds the marginal revenue from the
+leads it provides, drop it. Run `/admin/scrapers` weekly. Anything
+red or yellow for 7 days = unsubscribe or fix.

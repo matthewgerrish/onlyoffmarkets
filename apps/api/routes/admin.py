@@ -14,6 +14,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from scrapers.pipeline import SCRAPERS, run_one
 from storage.off_market_db import _conn, _ph
+from storage import scraper_runs_db
 
 log = logging.getLogger(__name__)
 
@@ -86,3 +87,49 @@ async def run_pipeline(
             results.append({"slug": slug, "error": str(e)[:200]})
 
     return {"results": results}
+
+
+@router.get("/scrapers")
+async def scrapers_health(token: str = Query(...), days: int = 14) -> dict:
+    """Per-scraper health summary over the last N days.
+
+    Returns a row per registered scraper, joined with the most recent
+    actual run. Slugs that have never run show up with state="never".
+    """
+    _check_token(token)
+    runs = {r["slug"]: r for r in scraper_runs_db.health(days=days)}
+    out = []
+    for slug, cls in SCRAPERS.items():
+        r = runs.get(slug)
+        if r:
+            r["registered"] = True
+            r["source_class"] = getattr(cls, "source_name", cls.__name__)
+            out.append(r)
+        else:
+            out.append({
+                "slug": slug,
+                "source_class": getattr(cls, "source_name", cls.__name__),
+                "state": "never",
+                "registered": True,
+                "runs": 0,
+                "total_scraped": 0,
+                "total_persisted": 0,
+                "total_errors": 0,
+                "last_run": None,
+                "hours_since_run": None,
+            })
+    # Add scraper_runs entries that no longer match any registered slug
+    # (deleted or renamed scrapers — keeps history visible).
+    for slug, r in runs.items():
+        if slug not in SCRAPERS:
+            r["registered"] = False
+            r["source_class"] = "(deleted)"
+            out.append(r)
+    return {"days": days, "scrapers": out}
+
+
+@router.get("/scrapers/{slug}")
+async def scraper_history(slug: str, token: str = Query(...), limit: int = 30) -> dict:
+    """Per-scraper run history, newest first."""
+    _check_token(token)
+    return {"slug": slug, "runs": scraper_runs_db.recent(slug, limit=int(limit))}

@@ -16,6 +16,7 @@ import argparse
 import asyncio
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Type
 
 from scrapers.base import BaseScraper
@@ -42,7 +43,18 @@ from scrapers.hud_homestore import HudHomestoreScraper
 from scrapers.homepath import HomePathScraper
 from scrapers.auction_com import AuctionComScraper
 
+# Commercial nationwide APIs (PROPERTYRADAR_API_KEY / BATCHDATA_API_KEY)
+from scrapers.propertyradar import (
+    PreforeclosurePR, AuctionPR, TaxLienPR, ProbatePR,
+    VacantPR, AbsenteePR, HighEquityPR,
+)
+from scrapers.batchdata import (
+    PreforeclosureBD, AuctionBD, TaxLienBD,
+    VacantBD, AbsenteeBD, HighEquityBD,
+)
+
 from storage.off_market_db import upsert
+from storage import scraper_runs_db
 
 log = logging.getLogger(__name__)
 
@@ -50,16 +62,36 @@ log = logging.getLogger(__name__)
 # Registration order: free + local-source scrapers first, commercial APIs
 # layered on top (they upgrade/dedupe records via shared parcel keys).
 SCRAPERS: dict[str, Type[BaseScraper]] = {
+    # ---- COMMERCIAL — NATIONWIDE (paid APIs, set keys to activate) ----
+    # PropertyRadar — single best ROI for nationwide distress data.
+    "pr-preforeclosure": PreforeclosurePR,
+    "pr-auction":        AuctionPR,
+    "pr-tax-lien":       TaxLienPR,
+    "pr-probate":        ProbatePR,
+    "pr-vacant":         VacantPR,
+    "pr-absentee":       AbsenteePR,
+    "pr-high-equity":    HighEquityPR,
+
+    # BatchData — same key as skip-trace, double-duty.
+    "bd-preforeclosure": PreforeclosureBD,
+    "bd-auction":        AuctionBD,
+    "bd-tax-lien":       TaxLienBD,
+    "bd-vacant":         VacantBD,
+    "bd-absentee":       AbsenteeBD,
+    "bd-high-equity":    HighEquityBD,
+
+    # ATTOM — already integrated; can stay layered for cross-validation.
+    "attom":             AttomScraper,
+    "attom-absentee":    AttomAbsenteeScraper,
+    "attom-national":    AttomNationalScraper,
+
     # ---- NATIONWIDE (free + public) ----
     "hud-homestore":   HudHomestoreScraper,    # HUD REO listings
     "homepath":        HomePathScraper,         # Fannie Mae REO
     "auction-com":     AuctionComScraper,       # Auction.com search feed
     "craigslist-fsbo": CraigslistFSBOScraper,  # RSS-based FSBO
 
-    # ---- LICENSED APIs (set API keys to enable) ----
-    "attom":           AttomScraper,            # ATTOM foreclosure bundle (national)
-    "attom-absentee":  AttomAbsenteeScraper,    # ATTOM property+sales (WA only)
-    "attom-national":  AttomNationalScraper,   # ATTOM property+sales (top-50 metros)
+    # ---- LICENSED APIs (other) ----
     "wholesale-il":    WholesaleInvestorLiftScraper,  # InvestorLift wholesaler marketplace
 
     # ---- WA COUNTY (free + public) ----
@@ -81,12 +113,18 @@ SCRAPERS: dict[str, Type[BaseScraper]] = {
 
 
 async def run_one(slug: str, cls: Type[BaseScraper]) -> dict:
-    """Run a single scraper, persist results, return a run summary."""
+    """Run a single scraper, persist results, return a run summary.
+
+    Logs every attempt to scraper_runs for /admin/scrapers visibility,
+    even when the scraper crashes mid-run.
+    """
     scraper = cls()
+    started_dt = datetime.now(timezone.utc)
     started = time.monotonic()
     count = 0
     persisted = 0
     errors = 0
+    crash_note: str | None = None
     try:
         async for lead in scraper.run():
             count += 1
@@ -97,8 +135,34 @@ async def run_one(slug: str, cls: Type[BaseScraper]) -> dict:
             except Exception as e:
                 errors += 1
                 log.exception("Persist failed for %s/%s: %s", lead.source, lead.source_id, e)
+    except Exception as e:
+        crash_note = f"{type(e).__name__}: {e}"
+        log.exception("Scraper %s crashed mid-run: %s", slug, e)
     finally:
-        await scraper.close()
+        try:
+            await scraper.close()
+        except Exception:
+            pass
+
+    elapsed = round(time.monotonic() - started, 1)
+    status = "error" if crash_note else ("empty" if count == 0 else "ok")
+
+    # Best-effort telemetry. Won't take down the run if the table is missing.
+    try:
+        scraper_runs_db.record_run(
+            slug,
+            source=scraper.source,
+            started_at=started_dt,
+            finished_at=datetime.now(timezone.utc),
+            scraped=count,
+            persisted=persisted,
+            errors=errors,
+            elapsed_s=elapsed,
+            status=status,
+            note=crash_note,
+        )
+    except Exception as exc:
+        log.warning("scraper_runs.record_run failed for %s: %s", slug, exc)
 
     return {
         "slug":     slug,
@@ -106,7 +170,9 @@ async def run_one(slug: str, cls: Type[BaseScraper]) -> dict:
         "scraped":  count,
         "persisted": persisted,
         "errors":   errors,
-        "elapsed_s": round(time.monotonic() - started, 1),
+        "elapsed_s": elapsed,
+        "status":   status,
+        "note":     crash_note,
     }
 
 

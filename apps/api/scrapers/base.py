@@ -31,9 +31,13 @@ log = logging.getLogger(__name__)
 
 
 DEFAULT_USER_AGENT = (
-    "PRP-Buyer-Site-Scraper/0.1 "
-    "(+https://pugetsoundhomefinders.com/about-our-data; hello@pugetsoundhomefinders.com)"
+    "OnlyOffMarkets-Scraper/0.2 "
+    "(+https://onlyoffmarkets.com/about; hello@onlyoffmarkets.com)"
 )
+
+# Cache files older than this get cleaned up on scraper init.
+_CACHE_PRUNE_AGE_SEC = 7 * 24 * 60 * 60   # 7 days
+_CACHE_PRUNE_MAX_FILES = 5000              # absolute hard cap per source
 
 
 class BaseScraper:
@@ -51,6 +55,7 @@ class BaseScraper:
     def __init__(self, cache_dir: Path | None = None):
         self.cache_dir = cache_dir or Path(".scraper_cache") / self.source
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self._prune_cache()
         self._last_request_at: float = 0.0
         self._robots_checked: dict[str, bool] = {}
         self._client = httpx.AsyncClient(
@@ -58,6 +63,31 @@ class BaseScraper:
             follow_redirects=True,
             headers={"User-Agent": DEFAULT_USER_AGENT},
         )
+
+    def _prune_cache(self) -> None:
+        """Drop cache entries older than _CACHE_PRUNE_AGE_SEC and cap total
+        files to _CACHE_PRUNE_MAX_FILES so a long-lived volume can't fill up.
+        Best-effort: any IO error logs and skips pruning that file."""
+        try:
+            now = time.time()
+            files = list(self.cache_dir.glob("*.html"))
+            # Drop expired
+            for f in files:
+                try:
+                    if now - f.stat().st_mtime > _CACHE_PRUNE_AGE_SEC:
+                        f.unlink(missing_ok=True)
+                except Exception:
+                    pass
+            # Cap total
+            files = sorted(self.cache_dir.glob("*.html"), key=lambda p: p.stat().st_mtime)
+            if len(files) > _CACHE_PRUNE_MAX_FILES:
+                for f in files[: len(files) - _CACHE_PRUNE_MAX_FILES]:
+                    try:
+                        f.unlink(missing_ok=True)
+                    except Exception:
+                        pass
+        except Exception as exc:
+            log.debug("cache prune failed for %s: %s", self.source, exc)
 
     # ---------- abstract ----------
 
