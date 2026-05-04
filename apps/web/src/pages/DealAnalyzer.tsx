@@ -9,6 +9,7 @@ import {
 import Seo from '../components/Seo';
 import { useToast } from '../components/Toast';
 import ScoreGauge from '../components/ScoreGauge';
+import ScoreExplainer from '../components/ScoreExplainer';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import { analyzeAddress, AnalyzerResponse } from '../lib/analyzer';
 import { saveToWatchlist, parcelKeyFor } from '../lib/watchlist';
@@ -272,7 +273,7 @@ function ResultPanel({ r }: { r: AnalyzerResponse }) {
 
       {/* DUAL GAUGES */}
       <div className="mt-8 grid lg:grid-cols-2 gap-5">
-        <DealGauge score={deal.total} band={deal.band} breakdown={deal.breakdown} />
+        <DealGauge score={deal.total} band={deal.band} breakdown={deal.breakdown} confidence={deal.confidence} />
         <AduGauge adu={r.adu} />
       </div>
 
@@ -423,8 +424,8 @@ function ResultPanel({ r }: { r: AnalyzerResponse }) {
 /* ---------------- Gauges ---------------- */
 
 function DealGauge({
-  score, band, breakdown,
-}: { score: number; band: string; breakdown: Array<{ key: string; label: string; points: number; detail?: string }> }) {
+  score, band, breakdown, confidence,
+}: { score: number; band: string; breakdown: Array<{ key: string; label: string; points: number; detail?: string }>; confidence: number }) {
   const hex = bandHex(band);
   return (
     <div className="card card-hover p-6 relative overflow-hidden">
@@ -436,6 +437,14 @@ function DealGauge({
       <div className="relative flex items-center justify-between gap-3 mb-4">
         <div className="font-display font-bold text-brand-navy inline-flex items-center gap-2">
           <Target className="w-5 h-5" style={{ color: hex }} /> Deal score
+          <ScoreExplainer
+            kind="deal"
+            total={score}
+            band={band}
+            hex={hex}
+            breakdown={breakdown}
+            confidence={confidence}
+          />
         </div>
         <span className="pill text-[11px] uppercase tracking-wider font-bold"
           style={{ color: hex, backgroundColor: hex + '15', borderColor: hex + '40', borderWidth: 1 }}>
@@ -483,6 +492,21 @@ function AduGauge({ adu }: { adu: AnalyzerResponse['adu'] }) {
       <div className="relative flex items-center justify-between gap-3 mb-4">
         <div className="font-display font-bold text-brand-navy inline-flex items-center gap-2">
           <Building2 className="w-5 h-5" style={{ color: hex }} /> ADU potential
+          <ScoreExplainer
+            kind="adu"
+            total={adu.score}
+            band={adu.band}
+            hex={hex}
+            breakdown={adu.breakdown}
+            notes={adu.notes}
+            meta={
+              adu.eligible
+                ? `Up to ${adu.units_possible} unit${adu.units_possible === 1 ? '' : 's'} possible${
+                    adu.state ? ` (${adu.state})` : ''
+                  }`
+                : undefined
+            }
+          />
         </div>
         <span className="pill text-[11px] uppercase tracking-wider font-bold"
           style={{ color: hex, backgroundColor: hex + '15', borderColor: hex + '40', borderWidth: 1 }}>
