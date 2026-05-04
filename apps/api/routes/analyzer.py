@@ -6,7 +6,12 @@ import logging
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from services import deal_analyzer, identity, propertyradar_client
+from services import (
+    batchdata_client,
+    deal_analyzer,
+    identity,
+    propertyradar_client,
+)
 from services.rate_limit import limiter
 
 log = logging.getLogger(__name__)
@@ -23,6 +28,13 @@ async def debug_pr_config() -> dict:
     flags) so we can verify a paste landed cleanly. Never returns the
     secret value."""
     return propertyradar_client.key_shape()
+
+
+@router.get("/debug/batchdata")
+async def debug_bd_config() -> dict:
+    """Diagnostic only — returns BatchData key SHAPE + whether it
+    looks like a sandbox key. Never returns the secret value."""
+    return batchdata_client.key_shape()
 
 
 @router.post("")
