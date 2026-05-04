@@ -27,7 +27,7 @@ from typing import Any
 
 import httpx
 
-from services import adu_scoring, propertyradar_client as pr
+from services import adu_scoring, deal_scoring, propertyradar_client as pr
 from storage.off_market_db import _conn, _ph
 
 log = logging.getLogger(__name__)
@@ -215,6 +215,18 @@ async def _from_propertyradar(addr: dict[str, Any]) -> dict[str, Any] | None:
             if v not in (None, "", []):
                 return v
         return None
+    # Equity %: prefer PR's explicit value when present (more accurate
+    # than our derived loan/value because it incorporates junior liens).
+    eq_pct_raw = f("EquityPercent", "equity_percent")
+    if eq_pct_raw is not None:
+        try:
+            v = float(eq_pct_raw)
+            eq_pct = v / 100.0 if v > 1 else v   # tolerate 0-1 vs 0-100 forms
+        except (TypeError, ValueError):
+            eq_pct = None
+    else:
+        eq_pct = None
+
     return {
         "parcel_apn":  str(f("APN", "ParcelNumber", "apn") or ""),
         "address":     str(f("SiteAddress", "address") or address),
@@ -239,7 +251,17 @@ async def _from_propertyradar(addr: dict[str, Any]) -> dict[str, Any] | None:
         "default_amount": _int(f("DefaultAmount")),
         "sale_date": f("AuctionDate", "TrusteeSaleDate"),
         "years_delinquent": _int(f("TaxDelinquentYears")),
-        "vacancy_months": None,
+        "vacancy_months": _int(f("VacancyMonths")),
+
+        # Paid-source enrichment for the scoring service
+        "foreclosure_stage": (f("ForeclosureStage") or "").upper() or None,
+        "equity_pct":        eq_pct,
+        "years_owned":       _int(f("YearsOwned", "OwnerYears")),
+        "last_sale_date":    f("LastSaleDate", "PriorSaleDate"),
+        "last_sale_price":   _int(f("LastSalePrice", "PriorSalePrice")),
+        "mortgage_count":    _int(f("MortgageCount")),
+        "mortgage_orig_year": _int(f("FirstMortgageOriginationYear", "MortgageOriginationYear")),
+        "hoa_delinquent":    bool(f("HOADelinquent")) if f("HOADelinquent") is not None else None,
     }
 
 
@@ -382,9 +404,14 @@ async def analyze(address: str) -> dict[str, Any]:
         year_built=prop.get("year_built"),
     )
 
-    # The frontend already has a `dealScore()` function in lib/score.ts
-    # that runs from OffMarketRow shape. We mirror its inputs so the
-    # backend-computed score and frontend-recomputed score match.
+    # Authoritative deal score using all fields we extracted.
+    deal = deal_scoring.score_deal({
+        **prop,
+        "state": (prop.get("state") or addr.get("state") or "").upper(),
+        "estimated_value": est_val,
+        "loan_balance":    loan,
+        "asking_price":    asking,
+    })
     return {
         "query":   address,
         "address": prop.get("address") or addr.get("full") or address,
@@ -420,9 +447,21 @@ async def analyze(address: str) -> dict[str, Any]:
             "sale_date":         prop.get("sale_date"),
             "years_delinquent":  prop.get("years_delinquent"),
             "vacancy_months":    prop.get("vacancy_months"),
+            "foreclosure_stage": prop.get("foreclosure_stage"),
+            "hoa_delinquent":    prop.get("hoa_delinquent"),
         },
 
-        "adu": adu,
+        # Owner / sale context (paid sources only)
+        "ownership": {
+            "years_owned":       prop.get("years_owned"),
+            "last_sale_date":    prop.get("last_sale_date"),
+            "last_sale_price":   prop.get("last_sale_price"),
+            "mortgage_count":    prop.get("mortgage_count"),
+            "equity_pct":        prop.get("equity_pct"),
+        },
+
+        "deal": deal,
+        "adu":  adu,
 
         "sources": {
             "off_market_db": prop.get("source_origin") == "off_market_db",

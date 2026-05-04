@@ -138,7 +138,8 @@ export default function DealAnalyzer() {
 /* ---------------- Result panel ---------------- */
 
 function ResultPanel({ r }: { r: AnalyzerResponse }) {
-  const dealScore = computeDealScore(r);
+  // Backend is authoritative now. Frontend just renders.
+  const deal = r.deal;
   return (
     <section className="container-page py-12 animate-fade-in-up">
       {/* Heading bar */}
@@ -155,14 +156,28 @@ function ResultPanel({ r }: { r: AnalyzerResponse }) {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <ConfidencePill confidence={deal.confidence} />
           <SourcePill r={r} />
         </div>
       </div>
 
       {/* DUAL GAUGES */}
       <div className="mt-8 grid lg:grid-cols-2 gap-5">
-        <DealGauge score={dealScore.total} band={dealScore.band} breakdown={dealScore.breakdown} />
+        <DealGauge score={deal.total} band={deal.band} breakdown={deal.breakdown} />
         <AduGauge adu={r.adu} />
+      </div>
+
+      {/* RECOMMENDED NEXT */}
+      <div className="mt-5 card p-4 bg-gradient-to-r from-brand-50 via-white to-amber-50 border-brand-100">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-full bg-white border border-brand-100 flex items-center justify-center shrink-0">
+            <Sparkles className="w-4 h-4 text-brand-500" />
+          </div>
+          <div className="text-sm text-slate-700">
+            <strong className="text-brand-navy">Recommendation: </strong>
+            {deal.recommendation}
+          </div>
+        </div>
       </div>
 
       {/* PROPERTY SNAPSHOT */}
@@ -195,11 +210,64 @@ function ResultPanel({ r }: { r: AnalyzerResponse }) {
         />
       </div>
 
+      {/* FORECLOSURE TIMELINE (only when there's an active stage) */}
+      {(r.distress.foreclosure_stage || r.distress.sale_date) && (
+        <div className="mt-5">
+          <ForeclosureTimeline r={r} />
+        </div>
+      )}
+
       {/* DISTRESS + OWNER */}
       <div className="mt-5 grid lg:grid-cols-2 gap-5">
         <DistressCard r={r} />
         <OwnerCard r={r} />
       </div>
+
+      {/* OWNERSHIP / SALE HISTORY (only when paid source delivered them) */}
+      {(r.ownership.years_owned !== null || r.ownership.last_sale_date || r.ownership.equity_pct !== null) && (
+        <div className="mt-5 card p-5">
+          <div className="text-xs font-bold uppercase tracking-wider text-slate-500 mb-3 inline-flex items-center gap-2">
+            <Calendar className="w-3.5 h-3.5 text-brand-500" /> Ownership context
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            {r.ownership.years_owned != null && (
+              <Datum
+                icon={Calendar}
+                label="Years owned"
+                value={`${r.ownership.years_owned}y`}
+              />
+            )}
+            {r.ownership.equity_pct != null && (
+              <Datum
+                icon={TrendingUp}
+                label="Equity"
+                value={`${Math.round(r.ownership.equity_pct * 100)}%`}
+              />
+            )}
+            {r.ownership.last_sale_date && (
+              <Datum
+                icon={Calendar}
+                label="Last sale"
+                value={String(r.ownership.last_sale_date).slice(0, 10)}
+              />
+            )}
+            {r.ownership.last_sale_price != null && (
+              <Datum
+                icon={TrendingUp}
+                label="Sale price"
+                value={`$${r.ownership.last_sale_price.toLocaleString()}`}
+              />
+            )}
+            {r.ownership.mortgage_count != null && r.ownership.mortgage_count > 0 && (
+              <Datum
+                icon={Home}
+                label="Mortgages"
+                value={r.ownership.mortgage_count}
+              />
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ACTIONS */}
       <div className="mt-6 card p-5 bg-gradient-to-br from-brand-50 via-white to-amber-50">
@@ -452,6 +520,79 @@ function Mini({ label, v }: { label: string; v: any }) {
   );
 }
 
+function ConfidencePill({ confidence }: { confidence: number }) {
+  // Buckets: 0-40 = thin, 40-70 = ok, 70+ = strong
+  const tier =
+    confidence >= 70 ? 'strong' : confidence >= 40 ? 'ok' : 'thin';
+  const cfg = {
+    strong: { cls: 'bg-emerald-50 text-emerald-700 border border-emerald-100', dot: 'bg-emerald-500' },
+    ok:     { cls: 'bg-amber-50 text-amber-700 border border-amber-100',       dot: 'bg-amber-500' },
+    thin:   { cls: 'bg-slate-100 text-slate-600 border border-slate-200',       dot: 'bg-slate-400' },
+  }[tier];
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${cfg.cls}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {confidence}% confidence
+    </span>
+  );
+}
+
+function ForeclosureTimeline({ r }: { r: AnalyzerResponse }) {
+  const stage = (r.distress.foreclosure_stage || '').toUpperCase();
+  const sale = r.distress.sale_date;
+  const days =
+    sale ? Math.round((new Date(sale).getTime() - Date.now()) / 86_400_000) : null;
+  const steps: Array<{ key: string; label: string; active: boolean; future?: boolean }> = [
+    { key: 'NOD',     label: 'NOD filed',         active: stage === 'NOD' || stage === 'NTS' || stage === 'AUCTION' },
+    { key: 'NTS',     label: 'NTS recorded',      active: stage === 'NTS' || stage === 'AUCTION' },
+    { key: 'AUCTION', label: 'Auction',           active: stage === 'AUCTION' },
+    { key: 'REO',     label: 'Bank-owned (REO)',  active: false, future: true },
+  ];
+  return (
+    <div className="card p-5">
+      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div className="text-xs font-bold uppercase tracking-wider text-slate-500 inline-flex items-center gap-2">
+          <Flame className="w-3.5 h-3.5 text-rose-500" /> Foreclosure timeline
+        </div>
+        {days !== null && days >= 0 && (
+          <span className="text-[11px] font-mono font-bold text-rose-600 bg-rose-50 border border-rose-100 rounded-full px-2.5 py-1">
+            Auction in {days}d
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
+        {steps.map((s, i) => (
+          <div key={s.key} className="flex items-center gap-2 sm:gap-3">
+            <div className="flex flex-col items-center min-w-[64px]">
+              <div
+                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold ${
+                  s.active
+                    ? 'bg-rose-500 text-white shadow-glow-rose'
+                    : s.future
+                    ? 'bg-slate-200 text-slate-400'
+                    : 'bg-slate-100 text-slate-400 border border-slate-200'
+                }`}
+              >
+                {i + 1}
+              </div>
+              <div className={`mt-1.5 text-[10px] font-semibold ${
+                s.active ? 'text-rose-600' : 'text-slate-400'
+              }`}>
+                {s.label}
+              </div>
+            </div>
+            {i < steps.length - 1 && (
+              <div className={`hidden sm:block w-8 h-px ${
+                steps[i + 1].active ? 'bg-rose-300' : 'bg-slate-200'
+              }`} />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function SourcePill({ r }: { r: AnalyzerResponse }) {
   const sources: string[] = [];
   if (r.sources.off_market_db) sources.push('OnlyOffMarkets DB');
@@ -492,85 +633,5 @@ function aduHex(band: string): string {
   }
 }
 
-/** Minimal client-side scoring mirror — the backend already returns
- *  the inputs we need; we recompute here so the UI updates instantly
- *  if we adjust the formula later without an API roundtrip. */
-function computeDealScore(r: AnalyzerResponse): {
-  total: number; band: string;
-  breakdown: Array<{ key: string; label: string; points: number; detail?: string }>;
-} {
-  const breakdown: Array<{ key: string; label: string; points: number; detail?: string }> = [];
-  let total = 0;
-  const W: Record<string, number> = {
-    auction: 25, preforeclosure: 22, 'tax-lien': 18, probate: 16,
-    vacant: 14, reo: 12, fsbo: 10, motivated_seller: 12,
-    expired: 8, canceled: 8, wholesale: 6, network: 4,
-  };
-  // top source
-  let top = 0; let topTag: string | null = null;
-  for (const t of r.distress.tags) {
-    const w = W[t] ?? 0;
-    if (w > top) { top = w; topTag = t; }
-  }
-  if (topTag) {
-    breakdown.push({ key: 'primary', label: `${topTag.replace(/_/g, ' ')} signal`, points: top });
-    total += top;
-  }
-  const extras = r.distress.tags.length - 1;
-  if (extras > 0) {
-    const pts = Math.min(extras * 6, 18);
-    breakdown.push({ key: 'stack', label: `${extras} stacked source${extras === 1 ? '' : 's'}`, points: pts });
-    total += pts;
-  }
-  if (r.distress.years_delinquent && r.distress.years_delinquent > 0) {
-    const pts = Math.min(r.distress.years_delinquent * 4, 16);
-    breakdown.push({ key: 'delinq', label: `${r.distress.years_delinquent}y delinquent`, points: pts });
-    total += pts;
-  }
-  if (r.distress.vacancy_months && r.distress.vacancy_months > 0) {
-    const pts = Math.min(Math.round(r.distress.vacancy_months * 1.5), 14);
-    breakdown.push({ key: 'vacant', label: `${r.distress.vacancy_months}mo vacant`, points: pts });
-    total += pts;
-  }
-  if (r.owner_state && r.state && r.owner_state !== r.state) {
-    breakdown.push({ key: 'absentee', label: `Absentee owner (${r.owner_state})`, points: 8 });
-    total += 8;
-  }
-  if (r.distress.sale_date) {
-    const days = Math.round((new Date(r.distress.sale_date).getTime() - Date.now()) / 86_400_000);
-    if (days >= 0 && days <= 60) {
-      const pts = days <= 14 ? 14 : days <= 30 ? 10 : 6;
-      breakdown.push({ key: 'sale', label: `Sale in ${days}d`, points: pts });
-      total += pts;
-    }
-  }
-  // LTV
-  if (r.estimated_value && r.loan_balance != null && r.estimated_value > 0) {
-    const ltv = r.loan_balance / r.estimated_value;
-    let pts = 0; let label = '';
-    if (ltv <= 0.05)        { pts = 18; label = 'Owned free & clear'; }
-    else if (ltv <= 0.4)    { pts = 14; label = `Low LTV ${Math.round(ltv * 100)}%`; }
-    else if (ltv <= 0.65)   { pts =  9; label = `Moderate LTV ${Math.round(ltv * 100)}%`; }
-    else if (ltv < 0.85)    { pts =  4; label = `High LTV ${Math.round(ltv * 100)}%`; }
-    else if (ltv < 1.0)     { pts =  0; label = `Tight LTV ${Math.round(ltv * 100)}%`; }
-    else                    { pts = -8; label = `Underwater ${Math.round(ltv * 100)}%`; }
-    if (pts !== 0 || label) {
-      breakdown.push({ key: 'ltv', label, points: pts });
-      total += pts;
-    }
-  }
-  if (r.spread_pct && r.spread_pct > 0.02) {
-    const pts = Math.min(Math.round(r.spread_pct * 60), 18);
-    breakdown.push({ key: 'spread', label: `Asking ${Math.round(r.spread_pct * 100)}% below est.`, points: pts });
-    total += pts;
-  }
-  total = Math.max(0, Math.min(100, Math.round(total)));
-  let band = 'cold';
-  if (total >= 85) band = 'top';
-  else if (total >= 70) band = 'hot';
-  else if (total >= 50) band = 'warm';
-  else if (total >= 30) band = 'warming';
-  return { total, band, breakdown };
-}
-
-void TrendingUp; // kept import in case we add a trend chip later
+/* Server is now the single source of truth for the deal score (see
+ * apps/api/services/deal_scoring.py). The frontend just renders. */

@@ -37,6 +37,24 @@ export interface AnalyzerResponse {
     sale_date: string | null;
     years_delinquent: number | null;
     vacancy_months: number | null;
+    foreclosure_stage: string | null;
+    hoa_delinquent: boolean | null;
+  };
+
+  ownership: {
+    years_owned: number | null;
+    last_sale_date: string | null;
+    last_sale_price: number | null;
+    mortgage_count: number | null;
+    equity_pct: number | null;
+  };
+
+  deal: {
+    total: number;
+    band: 'cold' | 'warming' | 'warm' | 'hot' | 'top';
+    breakdown: Array<{ key: string; label: string; points: number; detail?: string }>;
+    confidence: number;
+    recommendation: string;
   };
 
   adu: {
