@@ -50,7 +50,7 @@ export default function Landing() {
                   Explore the feed <ArrowRight className="w-4 h-4" />
                 </Link>
                 <Link to="/analyzer" className="btn-outline">
-                  Recon any address →
+                  Underwrite any address →
                 </Link>
               </div>
               <p className="mt-4 text-xs text-slate-500">

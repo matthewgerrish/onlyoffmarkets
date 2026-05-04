@@ -4,13 +4,14 @@ import {
   Sparkles, MapPin, Home, Loader2,
   Flame, Target, Building2, Calendar, Bed, Bath, Maximize2,
   TrendingUp, AlertTriangle, Crown, Send, ExternalLink,
-  Radar, CheckCircle2, Bookmark, BookmarkCheck,
+  Radar, CheckCircle2, Bookmark, BookmarkCheck, Info,
 } from 'lucide-react';
 import Seo from '../components/Seo';
 import { useToast } from '../components/Toast';
 import ScoreGauge from '../components/ScoreGauge';
 import ScoreExplainer from '../components/ScoreExplainer';
 import AddressAutocomplete from '../components/AddressAutocomplete';
+import MethodologyDrawer from '../components/MethodologyDrawer';
 import { analyzeAddress, AnalyzerResponse } from '../lib/analyzer';
 import { saveToWatchlist, parcelKeyFor } from '../lib/watchlist';
 
@@ -35,6 +36,7 @@ export default function DealAnalyzer() {
   const [result, setResult] = useState<AnalyzerResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [params, setParams] = useSearchParams();
+  const [methodologyOpen, setMethodologyOpen] = useState(false);
   const toast = useToast();
 
   // Synthetic step animation while the real analysis runs server-side.
@@ -71,7 +73,7 @@ export default function DealAnalyzer() {
         toast.info('No parcel match — showing geocoded location + state-law ADU only');
       }
     } catch (e) {
-      setError((e as Error).message || 'Recon failed');
+      setError((e as Error).message || 'Underwrite failed');
     } finally {
       setBusy(false);
     }
@@ -84,7 +86,7 @@ export default function DealAnalyzer() {
 
   return (
     <>
-      <Seo title="Recon · OnlyOffMarkets" />
+      <Seo title="Underwrite · OnlyOffMarkets" />
 
       {/* HERO + INPUT */}
       <section className="relative overflow-hidden hero-glow bg-gradient-to-b from-brand-50/40 via-white to-white">
@@ -97,12 +99,12 @@ export default function DealAnalyzer() {
           <div className="max-w-3xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600 mb-5 shadow-sm animate-fade-in-down">
               <Radar className="w-3.5 h-3.5 text-brand-500" />
-              <span className="font-semibold">Recon</span>
+              <span className="font-semibold">Underwrite</span>
               <span className="text-slate-400">·</span>
               <span>any US address · ADU score for WA + CA</span>
             </div>
             <h1 className="font-display text-5xl sm:text-6xl font-extrabold tracking-tight text-brand-navy leading-[1.02] animate-fade-in-up">
-              Read any address<br />
+              Underwrite any address<br />
               <span className="text-brand-500">in five seconds.</span>
             </h1>
             <p className="mt-5 text-lg text-slate-600 max-w-xl mx-auto animate-fade-in-up" style={{ animationDelay: '90ms' }}>
@@ -117,7 +119,7 @@ export default function DealAnalyzer() {
                 onSelect={(v) => { setAddress(v); void runAnalysis(v); }}
                 busy={busy}
               />
-              <div className="mt-3 flex flex-wrap gap-2 justify-center">
+              <div className="mt-3 flex flex-wrap gap-2 justify-center items-center">
                 {[
                   '1234 1st Ave, Seattle WA',
                   '500 Sunset Blvd, Los Angeles CA',
@@ -132,6 +134,13 @@ export default function DealAnalyzer() {
                     {q}
                   </button>
                 ))}
+                <button
+                  type="button"
+                  onClick={() => setMethodologyOpen(true)}
+                  className="text-[11px] text-brand-600 hover:text-brand-700 inline-flex items-center gap-1 px-2.5 py-1 transition-colors font-semibold"
+                >
+                  <Info className="w-3 h-3" /> How does this work?
+                </button>
               </div>
             </div>
 
@@ -146,6 +155,11 @@ export default function DealAnalyzer() {
 
       {busy && !result && <ScanningPanel step={step} />}
       {result && <ResultPanel r={result} />}
+
+      <MethodologyDrawer
+        open={methodologyOpen}
+        onClose={() => setMethodologyOpen(false)}
+      />
     </>
   );
 }
@@ -161,7 +175,7 @@ function ScanningPanel({ step }: { step: Step }) {
           </div>
           <div>
             <div className="text-xs font-bold uppercase tracking-wider text-brand-500">
-              Recon in progress
+              Underwriting in progress
             </div>
             <div className="text-sm text-slate-500">
               Live look-up across our DB + paid sources

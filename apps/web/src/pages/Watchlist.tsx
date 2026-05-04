@@ -78,8 +78,8 @@ export default function Watchlist() {
               <Bookmark className="w-7 h-7 text-amber-500" /> Watchlist
             </h1>
             <p className="mt-2 text-slate-600 max-w-xl">
-              Every Recon you save lands here. Re-score, take notes, and queue
-              postcards in one click.
+              Every Underwrite you save lands here. Re-score, take notes,
+              and queue postcards in one click.
             </p>
           </div>
           {items && items.length > 0 && (
@@ -184,11 +184,11 @@ export default function Watchlist() {
                 Nothing on watch yet
               </h3>
               <p className="mt-2 text-sm text-slate-500 max-w-md mx-auto">
-                Run a Recon, hit <strong className="text-slate-700">Save</strong>,
+                Run an Underwrite, hit <strong className="text-slate-700">Save</strong>,
                 and your pipeline starts here. Sortable, exportable, mailer-ready.
               </p>
               <Link to="/analyzer" className="btn-primary mt-5">
-                <Target className="w-4 h-4" /> Run your first Recon
+                <Target className="w-4 h-4" /> Run your first Underwrite
               </Link>
             </div>
           </div>
@@ -283,7 +283,7 @@ function WatchlistCard({
         <div className="flex items-center gap-1">
           <button
             onClick={onRecon}
-            title="Re-Recon"
+            title="Re-underwrite"
             className="inline-flex items-center justify-center w-7 h-7 rounded-full text-slate-500 hover:text-brand-600 hover:bg-brand-50"
           >
             <Target className="w-3.5 h-3.5" />

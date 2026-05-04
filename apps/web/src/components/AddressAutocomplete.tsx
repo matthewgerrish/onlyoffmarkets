@@ -158,7 +158,7 @@ export default function AddressAutocomplete({
                 <Loader2 className="w-4 h-4 animate-spin" /> Scanning…
               </>
             ) : (
-              <>Recon →</>
+              <>Underwrite →</>
             )}
           </button>
         </div>
