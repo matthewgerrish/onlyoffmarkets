@@ -146,16 +146,70 @@ export default function Layout() {
         </div>
       </main>
 
-      <footer className="border-t border-slate-100 mt-16 bg-slate-50">
-        <div className="container-page py-10 grid sm:grid-cols-2 gap-6 items-center">
-          <div className="flex items-center gap-3">
-            <Logo size={32} wordmarkSize={18} />
+      <footer className="border-t border-slate-100 mt-20 bg-gradient-to-b from-white to-slate-50">
+        <div className="container-page py-14">
+          <div className="grid lg:grid-cols-[2fr_1fr_1fr_1fr] gap-10 lg:gap-16">
+            <div>
+              <Logo size={56} wordmarkSize={22} />
+              <p className="mt-4 text-sm text-slate-600 max-w-xs leading-relaxed">
+                Every off-market lead in one feed. Public-record signals from
+                all 50 states, scored, mapped, and ready to action.
+              </p>
+              <div className="mt-5 flex items-center gap-3">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-100 text-emerald-700 text-[10px] font-bold uppercase tracking-wider">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                  Live
+                </span>
+                <span className="text-[11px] text-slate-400">
+                  signals refreshed daily
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">
+                Product
+              </div>
+              <ul className="space-y-2 text-sm">
+                <li><Link to="/search"     className="text-slate-600 hover:text-brand-600">Search</Link></li>
+                <li><Link to="/analyzer"   className="text-slate-600 hover:text-brand-600">Deal Analyzer</Link></li>
+                <li><Link to="/alerts"     className="text-slate-600 hover:text-brand-600">Alerts</Link></li>
+                <li><Link to="/mailers"    className="text-slate-600 hover:text-brand-600">Mailers</Link></li>
+                <li><Link to="/tokens"     className="text-slate-600 hover:text-brand-600">Tokens</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">
+                Plans
+              </div>
+              <ul className="space-y-2 text-sm">
+                <li><Link to="/membership" className="text-slate-600 hover:text-brand-600">Membership</Link></li>
+                <li><Link to="/pricing"    className="text-slate-600 hover:text-brand-600">Pricing</Link></li>
+                <li><Link to="/sources"    className="text-slate-600 hover:text-brand-600">Data sources</Link></li>
+              </ul>
+            </div>
+
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-3">
+                Company
+              </div>
+              <ul className="space-y-2 text-sm">
+                <li><Link to="/about"      className="text-slate-600 hover:text-brand-600">About & compliance</Link></li>
+                <li><a href="mailto:hello@onlyoffmarkets.com" className="text-slate-600 hover:text-brand-600">hello@onlyoffmarkets.com</a></li>
+              </ul>
+            </div>
           </div>
-          <div className="text-sm text-slate-500 sm:text-right flex flex-wrap gap-x-4 gap-y-2 sm:justify-end">
-            <Link to="/sources" className="hover:text-brand-600">Data sources</Link>
-            <Link to="/about" className="hover:text-brand-600">Compliance</Link>
-            <Link to="/pricing" className="hover:text-brand-600">Pricing</Link>
-            <span>© {new Date().getFullYear()} OnlyOffMarkets</span>
+
+          <div className="mt-12 pt-6 border-t border-slate-200 flex items-center justify-between gap-4 flex-wrap">
+            <div className="text-[11px] text-slate-400">
+              © {new Date().getFullYear()} OnlyOffMarkets · Signals, not listings.
+            </div>
+            <div className="text-[11px] text-slate-400 inline-flex items-center gap-3">
+              <span>Public-record data only.</span>
+              <span className="opacity-50">·</span>
+              <span>Built for investors, not gawkers.</span>
+            </div>
           </div>
         </div>
       </footer>

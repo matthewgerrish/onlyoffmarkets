@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import Seo from '../components/Seo';
 import { useToast } from '../components/Toast';
+import ScoreGauge from '../components/ScoreGauge';
 import { analyzeAddress, AnalyzerResponse } from '../lib/analyzer';
 
 /** Free-text deal analyzer.
@@ -51,8 +52,12 @@ export default function DealAnalyzer() {
       <Seo title="Deal Analyzer · OnlyOffMarkets" />
 
       {/* HERO + INPUT */}
-      <section className="relative overflow-hidden bg-gradient-to-b from-brand-50/60 via-white to-white">
-        <div className="absolute inset-x-0 top-0 h-[460px] bg-[radial-gradient(ellipse_at_top,rgba(29,108,242,0.18),transparent_70%)] pointer-events-none" />
+      <section className="relative overflow-hidden hero-glow bg-gradient-to-b from-brand-50/40 via-white to-white">
+        {/* Floating subtle radar-pulse rings behind the hero */}
+        <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-32 opacity-40">
+          <div className="absolute w-72 h-72 rounded-full border border-brand-300 animate-pulse-ring" style={{ animationDuration: '3s' }} />
+          <div className="absolute w-96 h-96 rounded-full border border-brand-200 animate-pulse-ring" style={{ animationDuration: '4s', animationDelay: '0.6s' }} />
+        </div>
         <div className="container-page relative pt-12 pb-16">
           <div className="max-w-3xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600 mb-5 shadow-sm animate-fade-in-down">
@@ -231,14 +236,14 @@ function DealGauge({
   score, band, breakdown,
 }: { score: number; band: string; breakdown: Array<{ key: string; label: string; points: number; detail?: string }> }) {
   const hex = bandHex(band);
-  const [shown, setShown] = useState(0);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setShown(score));
-    return () => cancelAnimationFrame(id);
-  }, [score]);
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between gap-3 mb-4">
+    <div className="card card-hover p-6 relative overflow-hidden">
+      {/* radial brand-glow as a subtle background layer */}
+      <div
+        className="absolute -top-10 -right-10 w-40 h-40 rounded-full blur-3xl opacity-30 pointer-events-none"
+        style={{ background: hex }}
+      />
+      <div className="relative flex items-center justify-between gap-3 mb-4">
         <div className="font-display font-bold text-brand-navy inline-flex items-center gap-2">
           <Target className="w-5 h-5" style={{ color: hex }} /> Deal score
         </div>
@@ -247,26 +252,8 @@ function DealGauge({
           {band}
         </span>
       </div>
-      <div className="flex items-center gap-5">
-        <div className="relative w-28 h-28 shrink-0">
-          <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90">
-            <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgb(241,245,249)" strokeWidth="3.5" />
-            <circle
-              cx="18" cy="18" r="15.9" fill="none" strokeWidth="3.5" strokeLinecap="round"
-              stroke={hex}
-              style={{
-                strokeDasharray: `${shown} 100`,
-                transition: 'stroke-dasharray 900ms cubic-bezier(0.16, 1, 0.3, 1)',
-              }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="font-display font-extrabold text-3xl tabular-nums" style={{ color: hex }}>
-              {score}
-            </span>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider">/100</span>
-          </div>
-        </div>
+      <div className="relative flex items-center gap-5">
+        <ScoreGauge score={score} hex={hex} size={112} />
         <div className="min-w-0 flex-1">
           {breakdown.length === 0 ? (
             <div className="text-sm text-slate-500">
@@ -297,14 +284,13 @@ function DealGauge({
 
 function AduGauge({ adu }: { adu: AnalyzerResponse['adu'] }) {
   const hex = aduHex(adu.band);
-  const [shown, setShown] = useState(0);
-  useEffect(() => {
-    const id = requestAnimationFrame(() => setShown(adu.score));
-    return () => cancelAnimationFrame(id);
-  }, [adu.score]);
   return (
-    <div className="card p-6">
-      <div className="flex items-center justify-between gap-3 mb-4">
+    <div className="card card-hover p-6 relative overflow-hidden">
+      <div
+        className="absolute -top-10 -left-10 w-40 h-40 rounded-full blur-3xl opacity-30 pointer-events-none"
+        style={{ background: hex }}
+      />
+      <div className="relative flex items-center justify-between gap-3 mb-4">
         <div className="font-display font-bold text-brand-navy inline-flex items-center gap-2">
           <Building2 className="w-5 h-5" style={{ color: hex }} /> ADU potential
         </div>
@@ -313,26 +299,8 @@ function AduGauge({ adu }: { adu: AnalyzerResponse['adu'] }) {
           {adu.band}
         </span>
       </div>
-      <div className="flex items-center gap-5">
-        <div className="relative w-28 h-28 shrink-0">
-          <svg viewBox="0 0 36 36" className="absolute inset-0 -rotate-90">
-            <circle cx="18" cy="18" r="15.9" fill="none" stroke="rgb(241,245,249)" strokeWidth="3.5" />
-            <circle
-              cx="18" cy="18" r="15.9" fill="none" strokeWidth="3.5" strokeLinecap="round"
-              stroke={hex}
-              style={{
-                strokeDasharray: `${shown} 100`,
-                transition: 'stroke-dasharray 900ms cubic-bezier(0.16, 1, 0.3, 1)',
-              }}
-            />
-          </svg>
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <span className="font-display font-extrabold text-3xl tabular-nums" style={{ color: hex }}>
-              {adu.score}
-            </span>
-            <span className="text-[10px] text-slate-400 uppercase tracking-wider">/100</span>
-          </div>
-        </div>
+      <div className="relative flex items-center gap-5">
+        <ScoreGauge score={adu.score} hex={hex} size={112} />
         <div className="min-w-0 flex-1">
           {!adu.eligible ? (
             <div className="text-sm text-slate-500">

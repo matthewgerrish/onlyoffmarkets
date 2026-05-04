@@ -32,6 +32,21 @@
     background: #cfe1ff;
     color: #0f1f3d;
   }
+
+  /* Premium scrollbars — slim, brand-tinted, only WebKit/Blink. */
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+    transition: background 150ms;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #1d6cf2;
+    background-clip: content-box;
+  }
 }
 
 @layer components {
@@ -90,6 +105,28 @@
 
   /* Stagger helper — child gets a small delay per index via inline style */
   .stagger-child[style] { animation-delay: var(--stagger, 0ms); }
+
+  /* Hero with subtle radial brand-glow background. Shared treatment
+   * for landing/analyzer/tokens hero sections. */
+  .hero-glow {
+    background: radial-gradient(
+      1100px 540px at 50% -120px,
+      rgba(29, 108, 242, 0.18) 0%,
+      rgba(29, 108, 242, 0.04) 38%,
+      transparent 70%
+    );
+  }
+
+  /* Brand wordmark shorthand — Only(navy) OffMarkets(blue) .com(navy) */
+  .wordmark {
+    @apply font-display font-extrabold tracking-tight;
+  }
+  .wordmark .accent { @apply text-brand-500; }
+
+  /* Frosted glass card — for hero overlays + stat strips */
+  .card-glass {
+    @apply bg-white/70 backdrop-blur border border-white/60 rounded-2xl shadow-brand;
+  }
 }
 
 @layer utilities {

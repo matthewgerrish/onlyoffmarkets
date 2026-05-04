@@ -79,8 +79,14 @@ export default function Tokens() {
       <Seo title="Tokens · OnlyOffMarkets" />
 
       {/* Banner */}
-      <section className="relative bg-gradient-to-br from-amber-50 via-white to-brand-50 border-b border-slate-100">
-        <div className="container-page py-12 grid lg:grid-cols-[1.4fr_1fr] gap-10 items-center">
+      <section className="relative bg-gradient-to-br from-amber-50 via-white to-brand-50 border-b border-slate-100 overflow-hidden">
+        {/* Floating coins motif — purely decorative */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute top-12 right-[14%] w-12 h-12 rounded-full bg-amber-200/40 blur-xl animate-fade-in" style={{ animationDelay: '300ms' }} />
+          <div className="absolute top-32 right-[8%] w-20 h-20 rounded-full bg-amber-300/30 blur-2xl animate-fade-in" style={{ animationDelay: '500ms' }} />
+          <div className="absolute bottom-8 left-[60%] w-14 h-14 rounded-full bg-brand-200/30 blur-xl animate-fade-in" style={{ animationDelay: '700ms' }} />
+        </div>
+        <div className="relative container-page py-12 grid lg:grid-cols-[1.4fr_1fr] gap-10 items-center">
           <div className="animate-fade-in-up">
             <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white border border-amber-200 text-xs text-amber-700 font-semibold shadow-sm mb-4">
               <Coins className="w-3.5 h-3.5" /> One credit, two services

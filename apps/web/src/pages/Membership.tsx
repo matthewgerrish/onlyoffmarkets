@@ -200,15 +200,18 @@ export default function Membership() {
             return (
               <div
                 key={p.id}
-                className={`card card-hover p-7 flex flex-col relative animate-fade-in-up ${
+                className={`card card-hover p-7 flex flex-col relative animate-fade-in-up overflow-hidden ${
                   isPremiumCard
-                    ? 'border-amber-300 ring-4 ring-amber-100 lg:-translate-y-2'
+                    ? 'border-amber-300 ring-4 ring-amber-100 lg:-translate-y-2 bg-gradient-to-br from-white via-white to-amber-50/40'
                     : isCurrent
                     ? 'border-brand-400'
                     : ''
                 }`}
                 style={{ animationDelay: `${i * 80}ms` }}
               >
+                {isPremiumCard && (
+                  <div className="absolute -top-12 -right-12 w-44 h-44 rounded-full bg-amber-300/30 blur-3xl pointer-events-none" />
+                )}
                 {p.badge && (
                   <span
                     className={`absolute -top-3 left-1/2 -translate-x-1/2 pill text-white shadow-md whitespace-nowrap ${

@@ -96,9 +96,23 @@ export default function Alerts() {
 
       <div className="container-page py-8">
         {alerts.length === 0 && (
-          <div className="card p-12 text-center text-slate-400">
-            <Bell className="w-6 h-6 mx-auto mb-2 opacity-40" />
-            No alerts yet. Click <strong className="text-slate-700">New alert</strong> to start.
+          <div className="card p-12 text-center relative overflow-hidden">
+            <div className="absolute inset-x-0 top-0 h-32 bg-[radial-gradient(ellipse_at_top,rgba(29,108,242,0.10),transparent_70%)] pointer-events-none" />
+            <div className="relative">
+              <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-brand-50 text-brand-500 mb-4 animate-pop-in">
+                <Bell className="w-6 h-6" />
+              </div>
+              <h3 className="font-display text-xl font-extrabold text-brand-navy">
+                Nothing pinging you yet
+              </h3>
+              <p className="mt-2 text-sm text-slate-500 max-w-md mx-auto">
+                Save a search criteria and we'll email you the moment a new
+                signal matches — instantly or in a daily digest.
+              </p>
+              <button onClick={() => setShowForm(true)} className="btn-primary mt-5">
+                <Plus className="w-4 h-4" /> Create your first alert
+              </button>
+            </div>
           </div>
         )}
 
