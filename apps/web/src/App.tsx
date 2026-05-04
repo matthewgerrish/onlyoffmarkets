@@ -14,6 +14,7 @@ import Tokens from './pages/Tokens';
 import Membership from './pages/Membership';
 import AdminScrapers from './pages/AdminScrapers';
 import DealAnalyzer from './pages/DealAnalyzer';
+import Watchlist from './pages/Watchlist';
 import NotFound from './pages/NotFound';
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
           <Route index element={<Landing />} />
           <Route path="search" element={<Search />} />
           <Route path="analyzer" element={<DealAnalyzer />} />
+          <Route path="watchlist" element={<Watchlist />} />
           <Route path="property/:id" element={<Property />} />
           <Route path="sources" element={<Sources />} />
           <Route path="alerts" element={<Alerts />} />

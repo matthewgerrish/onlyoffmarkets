@@ -1,16 +1,17 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
 import {
-  Sparkles, MapPin, Home,
+  Sparkles, MapPin, Home, Loader2,
   Flame, Target, Building2, Calendar, Bed, Bath, Maximize2,
   TrendingUp, AlertTriangle, Crown, Send, ExternalLink,
-  Radar, CheckCircle2,
+  Radar, CheckCircle2, Bookmark, BookmarkCheck,
 } from 'lucide-react';
 import Seo from '../components/Seo';
 import { useToast } from '../components/Toast';
 import ScoreGauge from '../components/ScoreGauge';
 import AddressAutocomplete from '../components/AddressAutocomplete';
 import { analyzeAddress, AnalyzerResponse } from '../lib/analyzer';
+import { saveToWatchlist, parcelKeyFor } from '../lib/watchlist';
 
 /** Free-text deal analyzer.
  *
@@ -32,6 +33,7 @@ export default function DealAnalyzer() {
   const [step, setStep] = useState<Step>(0);
   const [result, setResult] = useState<AnalyzerResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
   const toast = useToast();
 
   // Synthetic step animation while the real analysis runs server-side.
@@ -43,6 +45,18 @@ export default function DealAnalyzer() {
     const t3 = setTimeout(() => setStep(3), 1500);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [busy]);
+
+  // Pre-fill from ?address= (e.g. arriving from Watchlist re-Recon).
+  useEffect(() => {
+    const a = params.get('address');
+    if (a) {
+      setAddress(a);
+      void runAnalysis(a);
+      params.delete('address');
+      setParams(params, { replace: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const runAnalysis = async (q: string) => {
     if (!q.trim()) return;
@@ -199,6 +213,42 @@ function ScanningPanel({ step }: { step: Step }) {
 function ResultPanel({ r }: { r: AnalyzerResponse }) {
   // Backend is authoritative now. Frontend just renders.
   const deal = r.deal;
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const toast = useToast();
+  const nav = useNavigate();
+  const parcelKey = parcelKeyFor(r);
+
+  const onSave = async () => {
+    if (saved || saving) return;
+    setSaving(true);
+    try {
+      await saveToWatchlist({
+        parcel_key: parcelKey,
+        address:    r.address || r.query,
+        city:       r.city,
+        state:      r.state,
+        zip:        r.zip,
+        lat:        r.lat,
+        lng:        r.lng,
+        deal_score: r.deal.total,
+        deal_band:  r.deal.band,
+        adu_score:  r.adu.score,
+        adu_band:   r.adu.band,
+        snapshot:   r,
+      });
+      setSaved(true);
+      toast.success('Saved to watchlist');
+    } catch (e) {
+      toast.error((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onMail = () => {
+    nav(`/mailers?parcels=${encodeURIComponent(parcelKey)}`);
+  };
   return (
     <section className="container-page py-12 animate-fade-in-up">
       {/* Heading bar */}
@@ -343,12 +393,25 @@ function ResultPanel({ r }: { r: AnalyzerResponse }) {
                 : 'Light signal. Add to your watch list — re-score in 30 days.'}
             </p>
           </div>
-          <div className="flex items-center gap-2">
-            <Link to="/search" className="btn-outline text-sm">
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className={`btn-outline text-sm ${saved ? 'border-emerald-300 text-emerald-700 hover:!text-emerald-800' : ''}`}
+            >
+              {saved ? (
+                <><BookmarkCheck className="w-4 h-4" /> Saved</>
+              ) : saving ? (
+                <><Loader2 className="w-4 h-4 animate-spin" /> Saving…</>
+              ) : (
+                <><Bookmark className="w-4 h-4" /> Save to watchlist</>
+              )}
+            </button>
+            <button onClick={onMail} className="btn-outline text-sm">
               <Send className="w-4 h-4" /> Send mailer
-            </Link>
+            </button>
             <Link to="/alerts" className="btn-primary text-sm">
-              <Flame className="w-4 h-4" /> Save to alerts
+              <Flame className="w-4 h-4" /> Save alert
             </Link>
           </div>
         </div>

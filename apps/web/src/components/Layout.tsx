@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { Outlet, NavLink, Link, useLocation } from 'react-router-dom';
-import { Search, Bell, DollarSign, Database, Info, Mail, Menu, X, Coins, Crown, Target } from 'lucide-react';
+import { Search, Bell, DollarSign, Database, Info, Mail, Menu, X, Coins, Crown, Target, Bookmark } from 'lucide-react';
 import Logo from './Logo';
 import TokenBadge from './TokenBadge';
 import MembershipBadge from './MembershipBadge';
@@ -17,17 +17,20 @@ import { LogIn, LogOut, Settings } from 'lucide-react';
 const nav = [
   { to: '/search', label: 'Search', icon: Search },
   { to: '/analyzer', label: 'Recon', icon: Target },
+  { to: '/watchlist', label: 'Watch', icon: Bookmark },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/mailers', label: 'Mailers', icon: Mail },
   { to: '/tokens', label: 'Tokens', icon: Coins },
-  { to: '/pricing', label: 'Pricing', icon: DollarSign },
 ];
+
+/** Pricing moved to footer/secondary to keep primary nav lean. */
 
 /** Secondary nav — folded into mobile drawer + footer only. */
 const navSecondary = [
   { to: '/membership', label: 'Membership', icon: Crown },
-  { to: '/sources', label: 'Sources', icon: Database },
-  { to: '/about', label: 'About', icon: Info },
+  { to: '/pricing',    label: 'Pricing',    icon: DollarSign },
+  { to: '/sources',    label: 'Sources',    icon: Database },
+  { to: '/about',      label: 'About',      icon: Info },
 ];
 
 export default function Layout() {
@@ -171,6 +174,7 @@ export default function Layout() {
               <ul className="space-y-2 text-sm">
                 <li><Link to="/search"     className="text-slate-600 hover:text-brand-600">Search</Link></li>
                 <li><Link to="/analyzer"   className="text-slate-600 hover:text-brand-600">Recon</Link></li>
+                <li><Link to="/watchlist"  className="text-slate-600 hover:text-brand-600">Watchlist</Link></li>
                 <li><Link to="/alerts"     className="text-slate-600 hover:text-brand-600">Alerts</Link></li>
                 <li><Link to="/mailers"    className="text-slate-600 hover:text-brand-600">Mailers</Link></li>
                 <li><Link to="/tokens"     className="text-slate-600 hover:text-brand-600">Tokens</Link></li>
@@ -285,11 +289,18 @@ function UserMenu({
               <Coins className="w-4 h-4 text-amber-500" /> Token wallet
             </Link>
             <Link
+              to="/watchlist"
+              onClick={() => setOpen(false)}
+              className="flex items-center gap-3 px-4 py-2 text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-700"
+            >
+              <Bookmark className="w-4 h-4 text-amber-500" /> Watchlist
+            </Link>
+            <Link
               to="/alerts"
               onClick={() => setOpen(false)}
               className="flex items-center gap-3 px-4 py-2 text-sm text-slate-700 hover:bg-brand-50 hover:text-brand-700"
             >
-              <Settings className="w-4 h-4 text-slate-500" /> Alerts & saves
+              <Settings className="w-4 h-4 text-slate-500" /> Alerts
             </Link>
           </div>
           <div className="border-t border-slate-100 py-1.5">

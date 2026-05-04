@@ -22,6 +22,7 @@ from routes.tokens import router as tokens_router
 from routes.billing import router as billing_router
 from routes.auth import router as auth_router
 from routes.analyzer import router as analyzer_router
+from routes.watchlist import router as watchlist_router
 
 logging.basicConfig(
     level=logging.INFO,
@@ -56,3 +57,4 @@ app.include_router(tokens_router)
 app.include_router(billing_router)
 app.include_router(auth_router)
 app.include_router(analyzer_router)
+app.include_router(watchlist_router)
