@@ -93,8 +93,8 @@ export default function MethodologyDrawer({ open, onClose }: Props) {
                 icon={FileSearch}
                 accent="#1d6cf2"
                 title="Parcel lookup ladder"
-                desc="We try our own DB first (every parcel any scraper has touched). Miss → PropertyRadar by SiteAddress. Miss → ATTOM /property/basicprofile. Whichever hits first owns the snapshot."
-                pills={['DB', 'PropertyRadar', 'ATTOM', 'Geocode-only']}
+                desc="We try our own DB first (every parcel any scraper has touched). Miss → BatchData /property/search. Miss → ATTOM /property/basicprofile. Whichever hits first owns the snapshot."
+                pills={['DB', 'BatchData', 'ATTOM', 'Geocode-only']}
               />
               <PipeStep
                 n={3}
@@ -138,22 +138,22 @@ export default function MethodologyDrawer({ open, onClose }: Props) {
                 color="#1d6cf2"
               />
               <SourceCard
-                name="PropertyRadar"
-                tier="$199-499 / mo · best ROI"
-                desc="Single API for all 7 distress signals across 50 states. NOD / NTS / Auction stage, tax-default years, equity %, owner tenure, probate flag."
-                color="#10b981"
+                name="BatchData"
+                tier="pay-as-you-go · primary"
+                desc="Property + skip-trace combined. License includes SaaS resale, so customer queries hit our key safely. NOD / NTS / Auction, tax-default, vacant, absentee, equity %, tenure."
+                color="#8b5cf6"
               />
               <SourceCard
                 name="ATTOM Data"
                 tier="from ~$300 / mo · foreclosure-rich"
-                desc="Deep historical records, AVMs, full assessor + sales history. Currently running on a free trial."
+                desc="Deep historical records, AVMs, full assessor + sales history. Cross-validation layer."
                 color="#f59e0b"
               />
               <SourceCard
-                name="BatchData"
-                tier="pay-as-you-go · skip-trace stack"
-                desc="Already paying for skip-trace; same key powers the property API for distress filters and bulk-friendly mailer prep."
-                color="#8b5cf6"
+                name="PropertyRadar"
+                tier="partner-pending · not active"
+                desc="Excellent data but their ToS reserves it for end-user accounts only. We've applied for partner status; once approved each customer's own PR account will plug in via OAuth."
+                color="#94a3b8"
               />
             </div>
           </section>

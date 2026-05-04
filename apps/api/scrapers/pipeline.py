@@ -67,16 +67,20 @@ log = logging.getLogger(__name__)
 # layered on top (they upgrade/dedupe records via shared parcel keys).
 SCRAPERS: dict[str, Type[BaseScraper]] = {
     # ---- COMMERCIAL — NATIONWIDE (paid APIs, set keys to activate) ----
-    # PropertyRadar — single best ROI for nationwide distress data.
-    "pr-preforeclosure": PreforeclosurePR,
-    "pr-auction":        AuctionPR,
-    "pr-tax-lien":       TaxLienPR,
-    "pr-probate":        ProbatePR,
-    "pr-vacant":         VacantPR,
-    "pr-absentee":       AbsenteePR,
-    "pr-high-equity":    HighEquityPR,
+    # NOTE: PropertyRadar is intentionally OFF in production. Their ToS
+    # forbids serving their data inside SaaS apps sold to others without
+    # a partner / OAuth integration. Re-enable once we're an approved
+    # PropertyRadar partner. Code remains in scrapers/propertyradar.py.
+    #
+    # "pr-preforeclosure": PreforeclosurePR,
+    # "pr-auction":        AuctionPR,
+    # "pr-tax-lien":       TaxLienPR,
+    # "pr-probate":        ProbatePR,
+    # "pr-vacant":         VacantPR,
+    # "pr-absentee":       AbsenteePR,
+    # "pr-high-equity":    HighEquityPR,
 
-    # BatchData — same key as skip-trace, double-duty.
+    # BatchData — license includes SaaS resale; same key as skip-trace.
     "bd-preforeclosure": PreforeclosureBD,
     "bd-auction":        AuctionBD,
     "bd-tax-lien":       TaxLienBD,

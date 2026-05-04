@@ -192,3 +192,39 @@ retries, and User-Agent.
 If a source's monthly cost exceeds the marginal revenue from the
 leads it provides, drop it. Run `/admin/scrapers` weekly. Anything
 red or yellow for 7 days = unsubscribe or fix.
+
+---
+
+## 2026-05 update — PropertyRadar deactivated for SaaS resale
+
+PropertyRadar's API ToS state:
+
+> The PropertyRadar API is intended for end-users only — you can not
+> use it to build applications you sell to others. […] We also offer
+> OAuth, so partner applications can access the API on behalf of our
+> shared customers.
+
+Since OnlyOffMarkets is a SaaS sold to others, hitting one PropertyRadar
+account on behalf of every customer is a clear ToS violation. Effective
+2026-05-04 the production stack is:
+
+  Underwrite lookup ladder:  DB → **BatchData** → ATTOM → geocode
+  Pipeline:                  PR scrapers commented out, BD scrapers active
+
+The `services/propertyradar_client.py` and `scrapers/propertyradar.py`
+files remain in the repo. To re-enable:
+
+  1. Apply to PropertyRadar's partner program (OAuth flow).
+  2. Switch backend from one shared key to per-user OAuth tokens.
+  3. Uncomment the `pr-*` entries in `pipeline.py SCRAPERS`.
+
+BatchData was chosen as the primary because:
+  * Their published license tiers include explicit SaaS / Platform
+    rights for app builders.
+  * Same `BATCHDATA_API_KEY` already powers our skip-trace flow —
+    marginal cost is zero to flip property search on.
+  * Coverage is ~80% of PropertyRadar for distress signals; data
+    depth is shallower but more than adequate for our gauge math.
+
+ATTOM stays in the chain as a foreclosure-bundle cross-validation
+layer. Their developer terms permit embedded analytics use.

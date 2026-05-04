@@ -39,24 +39,20 @@ def is_live() -> bool:
     return bool(API_KEY)
 
 
-def _headers(scheme: str = "bearer") -> dict[str, str]:
-    """PropertyRadar accepts multiple auth schemes depending on the
-    account / partner type. We try them in order — Bearer first
-    (most common), then `Token`, then HTTP Basic with empty user."""
+def _headers() -> dict[str, str]:
+    """PropertyRadar v1 API uses OAuth2 Bearer tokens.
+
+    Per docs (https://developers.propertyradar.com/), the token is
+    NOT account-wide — it's issued per Import List. Find it under:
+        Lists → (the import list you create) → Settings → API Tokens.
+    """
     if not API_KEY:
         raise RuntimeError("PROPERTYRADAR_API_KEY not set")
-    base = {"Accept": "application/json", "Content-Type": "application/json"}
-    if scheme == "bearer":
-        base["Authorization"] = f"Bearer {API_KEY}"
-    elif scheme == "token":
-        base["Authorization"] = f"Token {API_KEY}"
-    elif scheme == "apikey":
-        base["X-API-Key"] = API_KEY
-    elif scheme == "basic":
-        import base64
-        b = base64.b64encode(f":{API_KEY}".encode()).decode()
-        base["Authorization"] = f"Basic {b}"
-    return base
+    return {
+        "Authorization": f"Bearer {API_KEY}",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
 
 
 def key_shape() -> dict[str, Any]:
@@ -134,39 +130,36 @@ async def search_properties(
     if fields:
         params["fields"] = ",".join(fields)
 
-    # Try each auth scheme in turn — first 200 wins. PropertyRadar
-    # mixes Bearer / Token / Basic / X-API-Key depending on tier.
-    schemes = ["bearer", "token", "apikey", "basic"]
-    last_status = 0
-    last_body = ""
     try:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as cx:
-            for scheme in schemes:
-                r = await cx.post(
-                    f"{API_BASE}/v1/properties",
-                    json=body,
-                    params=params,
-                    headers=_headers(scheme),
+            r = await cx.post(
+                f"{API_BASE}/v1/properties",
+                json=body,
+                params=params,
+                headers=_headers(),
+            )
+            if r.status_code == 401:
+                log.error(
+                    "PropertyRadar 401 — token rejected. Verify the token is "
+                    "from an *Import List's* Settings → API Tokens (not an "
+                    "account-wide token). Body: %s",
+                    (r.text or "")[:200],
                 )
-                last_status = r.status_code
-                last_body = (r.text or "")[:300]
-                if r.status_code == 200:
-                    log.info("PropertyRadar auth OK via %s", scheme)
-                    data = r.json()
-                    return data.get("results") or data.get("properties") or data.get("data") or []
-                if r.status_code == 429:
-                    log.warning("PropertyRadar rate-limited (monthly cap?). Skipping batch.")
-                    return []
-                if r.status_code in (400, 422):
-                    # Auth ok but request shape rejected — surface details + stop.
-                    log.warning("PropertyRadar %d %s body=%s", r.status_code, scheme, last_body)
-                    return []
-                # 401/403 → try next scheme
-        log.error(
-            "PropertyRadar all auth schemes returned %d. Body: %s",
-            last_status, last_body,
-        )
-        return []
+                return []
+            if r.status_code == 403:
+                log.error("PropertyRadar 403 — token lacks permission. Body: %s", (r.text or "")[:200])
+                return []
+            if r.status_code == 429:
+                log.warning("PropertyRadar 429 — monthly export quota or per-min rate hit.")
+                return []
+            if r.status_code >= 400:
+                log.warning(
+                    "PropertyRadar %d on /v1/properties. Body: %s",
+                    r.status_code, (r.text or "")[:300],
+                )
+                return []
+            data = r.json()
+            return data.get("results") or data.get("properties") or data.get("data") or []
     except Exception as exc:
         log.warning("PropertyRadar fetch failed: %s", exc)
         return []

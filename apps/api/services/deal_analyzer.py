@@ -27,7 +27,8 @@ from typing import Any
 
 import httpx
 
-from services import adu_scoring, deal_scoring, propertyradar_client as pr
+from services import adu_scoring, batchdata_client as bd, deal_scoring
+from services import propertyradar_client as pr  # kept for future partner-OAuth integration
 from storage.off_market_db import _conn, _ph
 
 log = logging.getLogger(__name__)
@@ -123,17 +124,23 @@ async def geocode(address: str) -> dict[str, Any] | None:
 # ---- Lookup ladder ------------------------------------------------------
 
 async def lookup_property(address_block: dict[str, Any]) -> dict[str, Any] | None:
-    """Try our DB → PropertyRadar → ATTOM in order. Return enriched
-    record or None if nothing found anywhere."""
+    """Lookup ladder: DB → BatchData → ATTOM → geocode-only.
+
+    PropertyRadar is intentionally NOT in this chain — their ToS
+    forbids serving their data inside an application sold to others
+    without a partner / OAuth agreement. The PR scraper code remains
+    in the repo (services/propertyradar_client.py) so we can re-enable
+    it once we're an approved PR partner.
+    """
     rec = _from_db(address_block)
     if rec:
         rec["source_origin"] = "off_market_db"
         return rec
 
-    if pr.is_live():
-        rec = await _from_propertyradar(address_block)
+    if bd.is_live():
+        rec = await _from_batchdata(address_block)
         if rec:
-            rec["source_origin"] = "propertyradar"
+            rec["source_origin"] = "batchdata"
             return rec
 
     if ATTOM_API_KEY:
@@ -195,6 +202,104 @@ def _from_db(addr: dict[str, Any]) -> dict[str, Any] | None:
     except Exception as exc:
         log.warning("DB lookup failed: %s", exc)
         return None
+
+
+async def _from_batchdata(addr: dict[str, Any]) -> dict[str, Any] | None:
+    """Query BatchData /api/v1/property/search by address. Returns the
+    first match or None.
+
+    BatchData licenses their property API for SaaS resale (their
+    Platform tier), so we can serve this data to OnlyOffMarkets
+    customers without ToS issues. Same key powers our skip-trace.
+    """
+    address = (addr.get("address") or "").strip()
+    state = (addr.get("state") or "").upper()
+    city = (addr.get("city") or "").strip()
+    zip_ = (addr.get("zip") or "").strip()
+    if not address:
+        return None
+
+    # Build the address-targeted search criteria. BatchData supports
+    # exact-address lookup via the searchCriteria.address block.
+    crit: dict[str, Any] = {"address": {"street": {"any": [address]}}}
+    if state: crit["address"]["state"] = {"any": [state]}
+    if city:  crit["address"]["city"]  = {"any": [city]}
+    if zip_:  crit["address"]["zip"]   = {"any": [zip_]}
+
+    rows = await bd.search(crit, page=1, take=1)
+    if not rows:
+        return None
+    p = rows[0]
+    addr_p = p.get("address") or {}
+    owner  = p.get("owner") or {}
+    val    = p.get("valuation") or {}
+    mort   = p.get("mortgage") or {}
+    fc     = p.get("foreclosure") or {}
+    bldg   = p.get("building") or {}
+    geo    = (addr_p.get("location") or {}) if isinstance(addr_p, dict) else {}
+
+    # Equity %: prefer BatchData's explicit value if present
+    eq_pct_raw = p.get("equityPercent") or val.get("equityPercent")
+    eq_pct = None
+    if eq_pct_raw is not None:
+        try:
+            v = float(eq_pct_raw)
+            eq_pct = v / 100.0 if v > 1 else v
+        except (TypeError, ValueError):
+            eq_pct = None
+
+    fc_stage_raw = (fc.get("stage") or fc.get("type") or "").lower()
+    fc_stage = None
+    if fc_stage_raw:
+        if "auction" in fc_stage_raw or "trustee" in fc_stage_raw: fc_stage = "AUCTION"
+        elif "nts" in fc_stage_raw:                                 fc_stage = "NTS"
+        elif "nod" in fc_stage_raw or "lis" in fc_stage_raw:        fc_stage = "NOD"
+
+    # Distress tag list inferred from BatchData flags
+    tags: list[str] = []
+    if fc_stage in ("NOD", "NTS"):    tags.append("preforeclosure")
+    if fc_stage == "AUCTION":         tags.append("auction")
+    if p.get("taxDelinquent") or (p.get("taxDelinquentYears") or 0) > 0:
+        tags.append("tax-lien")
+    if p.get("vacant"):               tags.append("vacant")
+    if p.get("inProbate"):            tags.append("probate")
+
+    return {
+        "parcel_apn":  str(p.get("apn") or addr_p.get("parcelNumber") or ""),
+        "address":     str(addr_p.get("street") or addr_p.get("line1") or address),
+        "city":        addr_p.get("city"),
+        "county":      addr_p.get("county"),
+        "state":       addr_p.get("state") or state,
+        "zip":         str(addr_p.get("zip") or "") or None,
+        "owner_name":  owner.get("fullName") or " ".join(filter(None, [owner.get("firstName"), owner.get("lastName")])) or None,
+        "owner_state": (owner.get("mailingAddress") or {}).get("state"),
+        "estimated_value": _int(val.get("estimatedValue") or val.get("avm")),
+        "assessed_value":  _int(val.get("assessedValue")),
+        "loan_balance":    _int(mort.get("balance") or mort.get("estimatedBalance")),
+        "bedrooms":   _int(bldg.get("bedrooms") or bldg.get("beds")),
+        "bathrooms":  _float(bldg.get("bathrooms") or bldg.get("baths")),
+        "sqft":       _int(bldg.get("livingArea") or bldg.get("buildingSqFt")),
+        "lot_sqft":   _int(bldg.get("lotSize") or bldg.get("lotSqFt")),
+        "year_built": _int(bldg.get("yearBuilt")),
+        "property_type": _norm_type(bldg.get("propertyType") or bldg.get("propertyUse")),
+        "latitude":   _float(geo.get("lat") or geo.get("latitude")),
+        "longitude":  _float(geo.get("lng") or geo.get("longitude")),
+        "source_tags": tags,
+        "default_amount": _int(fc.get("defaultAmount")),
+        "sale_date": fc.get("saleDate") or fc.get("auctionDate"),
+        "years_delinquent": _int(p.get("taxDelinquentYears")),
+        "vacancy_months": _int(p.get("vacancyMonths")),
+
+        # Paid-source enrichment for the scoring service
+        "foreclosure_stage": fc_stage,
+        "equity_pct":        eq_pct,
+        "years_owned":       _int(p.get("yearsOwned") or owner.get("yearsOwned")),
+        "last_sale_date":    p.get("lastSaleDate") or p.get("priorSaleDate"),
+        "last_sale_price":   _int(p.get("lastSalePrice") or p.get("priorSalePrice")),
+        "mortgage_count":    _int(mort.get("count")),
+        "mortgage_orig_year": _int(mort.get("originationYear") or mort.get("originatedYear")),
+        "hoa_delinquent":    bool(p.get("hoaDelinquent")) if p.get("hoaDelinquent") is not None else None,
+    }
 
 
 async def _from_propertyradar(addr: dict[str, Any]) -> dict[str, Any] | None:
