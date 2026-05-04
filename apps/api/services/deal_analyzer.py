@@ -86,10 +86,29 @@ async def geocode(address: str) -> dict[str, Any] | None:
         except Exception as exc:
             log.warning("Mapbox geocode failed: %s", exc)
 
-    # Best-effort parse fallback so the analyzer doesn't blow up
-    # without Mapbox configured.
-    return {"address": addr, "full": addr, "lat": None, "lng": None,
-            "city": None, "state": None, "zip": None, "county": None}
+    # Best-effort parse fallback so the analyzer still works without
+    # Mapbox configured. We pull `STATE_CODE` (2 caps) and 5-digit zip
+    # straight out of the typed address — good enough for ADU scoring
+    # which only needs state.
+    import re
+    state_m = re.search(r"\b([A-Z]{2})\b(?!\d)", addr)
+    zip_m   = re.search(r"\b(\d{5})(?:-\d{4})?\b", addr)
+    # crude "City" = the comma-separated chunk just before the state
+    city = None
+    parts = [p.strip() for p in addr.split(",")]
+    if len(parts) >= 2:
+        # last chunk usually is "WA 98101" — second-to-last is the city
+        city = parts[-2] if state_m else None
+    return {
+        "address": parts[0] if parts else addr,
+        "full":    addr,
+        "lat":     None,
+        "lng":     None,
+        "city":    city,
+        "state":   state_m.group(1) if state_m else None,
+        "zip":     zip_m.group(1)   if zip_m   else None,
+        "county":  None,
+    }
 
 
 # ---- Lookup ladder ------------------------------------------------------
