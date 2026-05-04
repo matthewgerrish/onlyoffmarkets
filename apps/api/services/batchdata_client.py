@@ -31,7 +31,14 @@ log = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("BATCHDATA_API_KEY")
 BASE_URL = os.environ.get("BATCHDATA_BASE_URL", "https://api.batchdata.com").rstrip("/")
-SEARCH_URL = os.environ.get("BATCHDATA_SEARCH_URL", f"{BASE_URL}/api/v1/property/search")
+# BatchData publishes three API versions. v2 is the current property-search
+# version (per developer.batchdata.com). v3 covers skip-trace. Override via
+# env if BatchData updates again or sandbox keys are pinned to a version.
+API_VERSION = os.environ.get("BATCHDATA_API_VERSION", "v2")
+SEARCH_URL = os.environ.get(
+    "BATCHDATA_SEARCH_URL",
+    f"{BASE_URL}/api/{API_VERSION}/property/search",
+)
 HTTP_TIMEOUT = 30.0
 
 
@@ -63,8 +70,43 @@ def key_shape() -> dict[str, Any]:
         "has_quotes": any(c in k for c in ('"', "'")),
         "non_ascii": any(ord(c) > 127 for c in k),
         "base_url": BASE_URL,
+        "api_version": API_VERSION,
         "search_url": SEARCH_URL,
     }
+
+
+async def probe_versions() -> dict[str, Any]:
+    """Diagnostic: hit /api/v1, /api/v2, /api/v3 with a tiny query and
+    report which versions accept the current key. Each call costs at
+    most 1 record (we set take=1) so it's safe even on metered keys.
+    Returns {version: status_code} so a user can see at a glance which
+    version their sandbox key is bound to."""
+    if not is_live():
+        return {"error": "BATCHDATA_API_KEY not set"}
+    out: dict[str, Any] = {"key_set": True}
+    body = {
+        "searchCriteria": {"address": {"state": {"any": ["MI"]}}},
+        "options": {"page": 1, "take": 1},
+    }
+    headers = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as cx:
+        for v in ("v1", "v2", "v3"):
+            url = f"{BASE_URL}/api/{v}/property/search"
+            try:
+                r = await cx.post(url, json=body, headers=headers)
+                out[v] = {"status": r.status_code, "url": url}
+                if r.status_code in (200, 201) or r.status_code in (400, 422):
+                    # 4xx-other-than-401-403 = endpoint exists, key valid,
+                    # query shape might just need tuning. Stop probing.
+                    out["matched"] = v
+                    break
+            except Exception as exc:
+                out[v] = {"status": "exception", "url": url, "error": str(exc)[:80]}
+    return out
 
 
 # ---- Pre-built filter blocks --------------------------------------------

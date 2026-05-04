@@ -37,6 +37,15 @@ async def debug_bd_config() -> dict:
     return batchdata_client.key_shape()
 
 
+@router.get("/debug/batchdata/probe")
+async def debug_bd_probe() -> dict:
+    """Probe v1 / v2 / v3 of the BatchData property-search endpoint
+    with the current key. Returns the status code we got from each
+    version so we can see which one the sandbox key is bound to.
+    Each call requests take=1 so the metered cost is at most 1 record."""
+    return await batchdata_client.probe_versions()
+
+
 @router.post("")
 async def analyze(
     body: AnalyzeIn,
