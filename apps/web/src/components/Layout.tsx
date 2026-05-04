@@ -16,7 +16,7 @@ import { LogIn, LogOut, Settings } from 'lucide-react';
  *  at lg/xl breakpoints. */
 const nav = [
   { to: '/search', label: 'Search', icon: Search },
-  { to: '/analyzer', label: 'Analyze', icon: Target },
+  { to: '/analyzer', label: 'Recon', icon: Target },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/mailers', label: 'Mailers', icon: Mail },
   { to: '/tokens', label: 'Tokens', icon: Coins },
@@ -170,7 +170,7 @@ export default function Layout() {
               </div>
               <ul className="space-y-2 text-sm">
                 <li><Link to="/search"     className="text-slate-600 hover:text-brand-600">Search</Link></li>
-                <li><Link to="/analyzer"   className="text-slate-600 hover:text-brand-600">Deal Analyzer</Link></li>
+                <li><Link to="/analyzer"   className="text-slate-600 hover:text-brand-600">Recon</Link></li>
                 <li><Link to="/alerts"     className="text-slate-600 hover:text-brand-600">Alerts</Link></li>
                 <li><Link to="/mailers"    className="text-slate-600 hover:text-brand-600">Mailers</Link></li>
                 <li><Link to="/tokens"     className="text-slate-600 hover:text-brand-600">Tokens</Link></li>

@@ -1,13 +1,15 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Search, Sparkles, Loader2, MapPin, Home, ArrowRight,
+  Sparkles, MapPin, Home, ArrowRight,
   Flame, Target, Building2, Calendar, Bed, Bath, Maximize2,
   TrendingUp, AlertTriangle, Crown, Send, ExternalLink,
+  Radar, CheckCircle2,
 } from 'lucide-react';
 import Seo from '../components/Seo';
 import { useToast } from '../components/Toast';
 import ScoreGauge from '../components/ScoreGauge';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 import { analyzeAddress, AnalyzerResponse } from '../lib/analyzer';
 
 /** Free-text deal analyzer.
@@ -17,43 +19,61 @@ import { analyzeAddress, AnalyzerResponse } from '../lib/analyzer';
  *   • ADU potential (WA + CA only) with units-possible
  *   • Owner / building / valuation snapshot
  */
+type Step = 0 | 1 | 2 | 3;
+const STEPS = [
+  { label: 'Geocoding address', icon: MapPin },
+  { label: 'Looking up parcel', icon: Home },
+  { label: 'Computing score', icon: Target },
+] as const;
+
 export default function DealAnalyzer() {
   const [address, setAddress] = useState('');
   const [busy, setBusy] = useState(false);
+  const [step, setStep] = useState<Step>(0);
   const [result, setResult] = useState<AnalyzerResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
   const toast = useToast();
 
-  useEffect(() => { inputRef.current?.focus(); }, []);
+  // Synthetic step animation while the real analysis runs server-side.
+  useEffect(() => {
+    if (!busy) return;
+    setStep(0);
+    const t1 = setTimeout(() => setStep(1), 400);
+    const t2 = setTimeout(() => setStep(2), 900);
+    const t3 = setTimeout(() => setStep(3), 1500);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [busy]);
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!address.trim()) return;
+  const runAnalysis = async (q: string) => {
+    if (!q.trim()) return;
     setBusy(true);
     setError(null);
+    setResult(null);
     try {
-      const r = await analyzeAddress(address.trim());
+      const r = await analyzeAddress(q.trim());
       setResult(r);
       if (!r.sources.found) {
         toast.info('No parcel match — showing geocoded location + state-law ADU only');
       }
     } catch (e) {
-      setError((e as Error).message || 'Analysis failed');
+      setError((e as Error).message || 'Recon failed');
     } finally {
       setBusy(false);
     }
   };
 
-  const tryExample = (q: string) => { setAddress(q); inputRef.current?.focus(); };
+  const tryExample = (q: string) => {
+    setAddress(q);
+    void runAnalysis(q);
+  };
 
   return (
     <>
-      <Seo title="Deal Analyzer · OnlyOffMarkets" />
+      <Seo title="Recon · OnlyOffMarkets" />
 
       {/* HERO + INPUT */}
       <section className="relative overflow-hidden hero-glow bg-gradient-to-b from-brand-50/40 via-white to-white">
-        {/* Floating subtle radar-pulse rings behind the hero */}
+        {/* Floating radar-pulse rings — pinging the target */}
         <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-32 opacity-40">
           <div className="absolute w-72 h-72 rounded-full border border-brand-300 animate-pulse-ring" style={{ animationDuration: '3s' }} />
           <div className="absolute w-96 h-96 rounded-full border border-brand-200 animate-pulse-ring" style={{ animationDuration: '4s', animationDelay: '0.6s' }} />
@@ -61,48 +81,27 @@ export default function DealAnalyzer() {
         <div className="container-page relative pt-12 pb-16">
           <div className="max-w-3xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white border border-slate-200 text-xs text-slate-600 mb-5 shadow-sm animate-fade-in-down">
-              <Sparkles className="w-3.5 h-3.5 text-brand-500" />
-              <span className="font-semibold">Deal Analyzer</span>
+              <Radar className="w-3.5 h-3.5 text-brand-500" />
+              <span className="font-semibold">Recon</span>
               <span className="text-slate-400">·</span>
               <span>any US address · ADU score for WA + CA</span>
             </div>
             <h1 className="font-display text-5xl sm:text-6xl font-extrabold tracking-tight text-brand-navy leading-[1.02] animate-fade-in-up">
-              Score any address<br />
+              Read any address<br />
               <span className="text-brand-500">in five seconds.</span>
             </h1>
             <p className="mt-5 text-lg text-slate-600 max-w-xl mx-auto animate-fade-in-up" style={{ animationDelay: '90ms' }}>
-              Distress signals, equity, ADU potential — combined into one
-              walk-on-a-deal-or-walk-away gauge.
+              Drop an address. Get a deal score, ADU potential, owner snapshot,
+              and a one-line "go or skip" call — instantly.
             </p>
 
-            <form onSubmit={onSubmit} className="mt-7 max-w-xl mx-auto animate-fade-in-up" style={{ animationDelay: '160ms' }}>
-              <div className="relative">
-                <Search className="w-5 h-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                <input
-                  ref={inputRef}
-                  type="text"
-                  value={address}
-                  onChange={(e) => setAddress(e.target.value)}
-                  placeholder="123 Main St, Seattle WA 98101"
-                  className="w-full bg-white border border-slate-200 rounded-full pl-12 pr-32 py-4 text-base
-                    text-slate-900 placeholder:text-slate-400 shadow-brand
-                    focus:outline-none focus:border-brand-500 focus:ring-4 focus:ring-brand-100"
-                  required
-                />
-                <button
-                  type="submit"
-                  disabled={busy}
-                  className="absolute right-1.5 top-1/2 -translate-y-1/2 btn-primary !px-5 !py-2.5 text-sm disabled:opacity-60"
-                >
-                  {busy ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" /> Analyzing…
-                    </>
-                  ) : (
-                    <>Analyze <ArrowRight className="w-4 h-4" /></>
-                  )}
-                </button>
-              </div>
+            <div className="mt-7 max-w-xl mx-auto animate-fade-in-up" style={{ animationDelay: '160ms' }}>
+              <AddressAutocomplete
+                value={address}
+                onChange={setAddress}
+                onSelect={(v) => { setAddress(v); void runAnalysis(v); }}
+                busy={busy}
+              />
               <div className="mt-3 flex flex-wrap gap-2 justify-center">
                 {[
                   '1234 1st Ave, Seattle WA',
@@ -119,7 +118,7 @@ export default function DealAnalyzer() {
                   </button>
                 ))}
               </div>
-            </form>
+            </div>
 
             {error && (
               <div className="mt-5 max-w-xl mx-auto card p-3 bg-rose-50 border-rose-200 text-rose-700 text-sm inline-flex items-center gap-2">
@@ -130,8 +129,68 @@ export default function DealAnalyzer() {
         </div>
       </section>
 
+      {busy && !result && <ScanningPanel step={step} />}
       {result && <ResultPanel r={result} />}
     </>
+  );
+}
+
+/** Multi-step skeleton shown while the analyzer is running. */
+function ScanningPanel({ step }: { step: Step }) {
+  return (
+    <section className="container-page py-12 animate-fade-in">
+      <div className="max-w-2xl mx-auto card p-6">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="w-9 h-9 rounded-full bg-brand-50 text-brand-500 inline-flex items-center justify-center">
+            <Radar className="w-4 h-4 animate-pulse" />
+          </div>
+          <div>
+            <div className="text-xs font-bold uppercase tracking-wider text-brand-500">
+              Recon in progress
+            </div>
+            <div className="text-sm text-slate-500">
+              Live look-up across our DB + paid sources
+            </div>
+          </div>
+        </div>
+
+        <ol className="mt-3 space-y-3">
+          {STEPS.map((s, i) => {
+            const active = step === i;
+            const done = step > i;
+            const Icon = s.icon;
+            return (
+              <li
+                key={s.label}
+                className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                  active ? 'border-brand-300 bg-brand-50/40 shadow-brand'
+                  : done ? 'border-emerald-200 bg-emerald-50/40'
+                  : 'border-slate-100 bg-slate-50'
+                }`}
+              >
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${
+                  active ? 'bg-brand-500 text-white shadow-glow-brand'
+                  : done ? 'bg-emerald-500 text-white'
+                  : 'bg-white border border-slate-200 text-slate-400'
+                }`}>
+                  {done ? <CheckCircle2 className="w-4 h-4" /> : <Icon className="w-4 h-4" />}
+                </div>
+                <div className={`text-sm font-semibold ${
+                  active ? 'text-brand-700' : done ? 'text-emerald-700' : 'text-slate-500'
+                }`}>
+                  {s.label}{active ? '…' : done ? ' ✓' : ''}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <div className="skeleton h-24 rounded-2xl" />
+          <div className="skeleton h-24 rounded-2xl" />
+        </div>
+      </div>
+    </section>
   );
 }
 
