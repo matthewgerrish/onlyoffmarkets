@@ -49,7 +49,9 @@ export default function Landing() {
                 <Link to="/search" className="btn-primary">
                   Explore the feed <ArrowRight className="w-4 h-4" />
                 </Link>
-                <Link to="/sources" className="btn-outline">See data sources</Link>
+                <Link to="/analyzer" className="btn-outline">
+                  Analyze any address →
+                </Link>
               </div>
               <p className="mt-4 text-xs text-slate-500">
                 Signals, not listings. We never claim a property is for sale unless its source confirms it.

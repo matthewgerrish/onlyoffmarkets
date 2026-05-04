@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Outlet, NavLink, Link, useLocation } from 'react-router-dom';
-import { Search, Bell, DollarSign, Database, Info, Mail, Menu, X, Coins, Crown } from 'lucide-react';
+import { Search, Bell, DollarSign, Database, Info, Mail, Menu, X, Coins, Crown, Target } from 'lucide-react';
 import Logo from './Logo';
 import TokenBadge from './TokenBadge';
 import MembershipBadge from './MembershipBadge';
@@ -16,6 +16,7 @@ import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
  *  at lg/xl breakpoints. */
 const nav = [
   { to: '/search', label: 'Search', icon: Search },
+  { to: '/analyzer', label: 'Analyze', icon: Target },
   { to: '/alerts', label: 'Alerts', icon: Bell },
   { to: '/mailers', label: 'Mailers', icon: Mail },
   { to: '/tokens', label: 'Tokens', icon: Coins },
