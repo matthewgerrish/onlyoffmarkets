@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Sparkles, MapPin, Home, ArrowRight,
+  Sparkles, MapPin, Home,
   Flame, Target, Building2, Calendar, Bed, Bath, Maximize2,
   TrendingUp, AlertTriangle, Crown, Send, ExternalLink,
   Radar, CheckCircle2,
