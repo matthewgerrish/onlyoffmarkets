@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
-from services import deal_analyzer, identity
+from services import deal_analyzer, identity, propertyradar_client
 from services.rate_limit import limiter
 
 log = logging.getLogger(__name__)
@@ -15,6 +15,14 @@ router = APIRouter(prefix="/analyzer", tags=["analyzer"])
 
 class AnalyzeIn(BaseModel):
     address: str
+
+
+@router.get("/debug/propertyradar")
+async def debug_pr_config() -> dict:
+    """Diagnostic only — returns key SHAPE (length, prefix, whitespace
+    flags) so we can verify a paste landed cleanly. Never returns the
+    secret value."""
+    return propertyradar_client.key_shape()
 
 
 @router.post("")
