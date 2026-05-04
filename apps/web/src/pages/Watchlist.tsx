@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import {
   Bookmark, Trash2, Send, Loader2, Search as SearchIcon,
-  ArrowRight, MapPin, Target, Building2, Calendar,
+  MapPin, Target, Building2, Calendar,
 } from 'lucide-react';
 import Seo from '../components/Seo';
 import { useToast } from '../components/Toast';
