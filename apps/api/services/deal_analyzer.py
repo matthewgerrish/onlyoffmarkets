@@ -93,12 +93,21 @@ async def geocode(address: str) -> dict[str, Any] | None:
     import re
     state_m = re.search(r"\b([A-Z]{2})\b(?!\d)", addr)
     zip_m   = re.search(r"\b(\d{5})(?:-\d{4})?\b", addr)
-    # crude "City" = the comma-separated chunk just before the state
-    city = None
+    # crude "City" extraction. Two common shapes:
+    #   "123 Main St, Seattle, WA 98101"   → 3 parts, parts[1] is city
+    #   "123 Main St, Seattle WA 98101"    → 2 parts, the trailing
+    #                                         chunk has "City STATE ZIP"
     parts = [p.strip() for p in addr.split(",")]
-    if len(parts) >= 2:
-        # last chunk usually is "WA 98101" — second-to-last is the city
-        city = parts[-2] if state_m else None
+    city = None
+    if len(parts) >= 3:
+        city = parts[-2]
+    elif len(parts) == 2 and state_m:
+        # Pull the city out of "Seattle WA 98101" — everything before
+        # the 2-letter state code.
+        tail = parts[-1]
+        idx = tail.find(state_m.group(1))
+        if idx > 0:
+            city = tail[:idx].strip().rstrip(",")
     return {
         "address": parts[0] if parts else addr,
         "full":    addr,
