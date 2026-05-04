@@ -277,9 +277,9 @@ function ResultPanel({ r }: { r: AnalyzerResponse }) {
               <Sparkles className="w-4 h-4 text-brand-500" /> Next steps
             </div>
             <p className="text-sm text-slate-600 mt-1 max-w-xl">
-              {dealScore.total >= 70
+              {deal.total >= 70
                 ? "Strong signal. Skip-trace the owner and queue a postcard while it's fresh."
-                : dealScore.total >= 40
+                : deal.total >= 40
                 ? 'Worth a closer look. Pull the owner contact and watch for new signals.'
                 : 'Light signal. Add to your watch list — re-score in 30 days.'}
             </p>
