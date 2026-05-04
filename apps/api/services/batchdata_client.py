@@ -31,10 +31,10 @@ log = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("BATCHDATA_API_KEY")
 BASE_URL = os.environ.get("BATCHDATA_BASE_URL", "https://api.batchdata.com").rstrip("/")
-# BatchData publishes three API versions. v2 is the current property-search
-# version (per developer.batchdata.com). v3 covers skip-trace. Override via
-# env if BatchData updates again or sandbox keys are pinned to a version.
-API_VERSION = os.environ.get("BATCHDATA_API_VERSION", "v2")
+# BatchData uses v1 as the production base path for property + skip-trace
+# (https://api.batchdata.com/api/v1). v2 / v3 are listed in the docs sidebar
+# but use different endpoint shapes. Override only if BatchData updates.
+API_VERSION = os.environ.get("BATCHDATA_API_VERSION", "v1")
 SEARCH_URL = os.environ.get(
     "BATCHDATA_SEARCH_URL",
     f"{BASE_URL}/api/{API_VERSION}/property/search",
@@ -47,12 +47,32 @@ def is_live() -> bool:
 
 
 def is_sandbox() -> bool:
-    """Heuristic — BatchData sandbox keys typically include 'test' or
-    'sandbox' in the prefix. Used only for log breadcrumbs / UI hints."""
+    """Heuristic — sandbox if the key looks test-flavored OR the base URL
+    points at Stoplight's hosted mock server (they're hosted there)."""
     if not API_KEY:
         return False
     head = API_KEY.lower()
+    if "stoplight.io" in BASE_URL.lower():
+        return True
     return "test" in head[:14] or "sandbox" in head[:14] or "sand" in head[:8]
+
+
+def _is_stoplight_mock() -> bool:
+    return "stoplight.io" in BASE_URL.lower()
+
+
+def _request_headers() -> dict[str, str]:
+    """Headers for an outbound BatchData request. When the base URL is a
+    Stoplight hosted mock, we add `Prefer: code=200` so the mock server
+    serves the 200 example payload defined in the spec."""
+    h = {
+        "Authorization": f"Bearer {API_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+    }
+    if _is_stoplight_mock():
+        h["Prefer"] = "code=200, dynamic=true"
+    return h
 
 
 def key_shape() -> dict[str, Any]:
@@ -88,11 +108,7 @@ async def probe_versions() -> dict[str, Any]:
         "searchCriteria": {"address": {"state": {"any": ["MI"]}}},
         "options": {"page": 1, "take": 1},
     }
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-    }
+    headers = _request_headers()
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as cx:
         for v in ("v1", "v2", "v3"):
             url = f"{BASE_URL}/api/{v}/property/search"
@@ -144,15 +160,7 @@ async def search(
     env = "sandbox" if is_sandbox() else "live"
     try:
         async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as cx:
-            r = await cx.post(
-                SEARCH_URL,
-                json=body,
-                headers={
-                    "Authorization": f"Bearer {API_KEY}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-            )
+            r = await cx.post(SEARCH_URL, json=body, headers=_request_headers())
             if r.status_code == 401:
                 log.error(
                     "BatchData 401 (%s key) — token rejected by %s. "
