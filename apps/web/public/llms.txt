@@ -1,0 +1,70 @@
+# OnlyOffMarkets
+
+> Every off-market real-estate lead in one feed. Public-record signals
+> from all 50 states, scored, mapped, and ready to action. Investor-
+> focused SaaS with token-based credits, ADU scoring (WA + CA), skip-
+> trace lookups, and Lob-backed direct mail.
+
+## Core concepts
+
+- **Underwrite** — score any US address against 14 factors (foreclosure
+  stage, equity %, tenure, vacancy, absentee, etc.) and ADU eligibility
+  (WA HB 1337 / CA AB 68 + SB 9). Returns 0-100 score, band, breakdown,
+  confidence, and a recommendation. Free for any signed-in user.
+- **Watchlist** — saved Underwrite snapshots per user. Sortable, with
+  notes and direct routes back to Underwrite or to a mailer campaign.
+- **Tokens** — $0.20 each. 1 = standard owner lookup, 3 = pro lookup,
+  4 = postcard mailer. Volume packs at /tokens.
+- **Membership** — Free / Standard ($9.95/mo) / Premium ($29.95/mo).
+  Premium adds 5% bonus tokens, 25 free monthly Standard lookups,
+  nationwide search (Free is metro-locked), bulk skip-trace, comp gen.
+- **Search** — map-driven distress feed. Filter by source (preforeclosure,
+  auction, tax-lien, probate, vacant, REO, FSBO, motivated_seller),
+  property type, value, beds/baths, sqft, state. Score-ranked.
+- **Mailers** — Lob-backed postcard campaigns. Templates editable;
+  bulk-send from selected parcels.
+- **Alerts** — saved searches that email when new matches land.
+
+## Public REST API
+
+Base URL: https://onlyoffmarkets-api.fly.dev
+
+Auth: `Authorization: Bearer <jwt>` (preferred) OR `X-User-Id: <uuid>` (legacy).
+
+- POST /analyzer { address } — full Underwrite (deal score + ADU + ownership)
+- GET  /off-market — paginated distress feed; query: source, states, county, property_type, min_value, max_value, min_beds, min_baths, min_sqft, max_sqft, limit
+- GET  /off-market/{parcel_key} — single record + raw source log
+- GET  /off-market/_/coverage — by_state / by_source / total_parcels
+- GET  /off-market/_/pins — lightweight map-marker payload
+- GET  /owner/{parcel_key}?tier=standard|pro — skip-trace lookup
+- GET  /owner/_/pricing — tier prices
+- POST /mailers/campaigns — postcard send (token-debited)
+- GET  /tokens/balance — wallet
+- POST /billing/checkout/{tokens|membership} — Stripe Checkout
+- GET  /billing/membership — current plan
+- POST /watchlist — save Underwrite to user's watchlist
+- GET  /watchlist — list saved properties
+- POST /auth/magic-link { email } — request sign-in email
+
+## Data sources
+
+- BatchData (primary) — property + skip-trace, license permits SaaS resale
+- ATTOM Data (cross-validation) — foreclosure / assessor / AVM
+- OnlyOffMarkets DB — own scrapers (NYC DOB, Chicago / SF / Philly,
+  WA county courts, ATTOM nightly)
+- PropertyRadar — code in repo but disabled in production until
+  partner OAuth approval (their ToS forbids resale via shared keys)
+
+## Compliance posture
+
+- Public-record data only. No FCRA decisions, no MLS scraping, no
+  protected-class filtering.
+- Skip-trace tier 1 (Standard) backed by BatchData; tier 2 (Pro) by
+  TLOxp via permissible-purpose pathway.
+- Mailers honor DNC and Lob's address verification before send.
+
+## Optional: more depth
+
+- /docs/api.md — full OpenAPI spec (coming soon)
+- /docs/scoring.md — exact 14-factor formula
+- /docs/adu.md — WA HB 1337 + CA AB 68/SB 9 rule citations
