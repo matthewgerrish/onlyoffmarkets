@@ -31,14 +31,19 @@ log = logging.getLogger(__name__)
 
 API_KEY = os.environ.get("BATCHDATA_API_KEY")
 BASE_URL = os.environ.get("BATCHDATA_BASE_URL", "https://api.batchdata.com").rstrip("/")
-# BatchData uses v1 as the production base path for property + skip-trace
-# (https://api.batchdata.com/api/v1). v2 / v3 are listed in the docs sidebar
-# but use different endpoint shapes. Override only if BatchData updates.
+# BatchData production: /api/v1/property/search
+# Stoplight mock:        /property/search  (the OpenAPI spec uses bare paths)
 API_VERSION = os.environ.get("BATCHDATA_API_VERSION", "v1")
-SEARCH_URL = os.environ.get(
-    "BATCHDATA_SEARCH_URL",
-    f"{BASE_URL}/api/{API_VERSION}/property/search",
-)
+
+
+def _default_search_url() -> str:
+    if "stoplight.io" in BASE_URL.lower():
+        # Stoplight hosted-mock spec uses bare /property/search.
+        return f"{BASE_URL}/property/search"
+    return f"{BASE_URL}/api/{API_VERSION}/property/search"
+
+
+SEARCH_URL = os.environ.get("BATCHDATA_SEARCH_URL", _default_search_url())
 HTTP_TIMEOUT = 30.0
 
 
@@ -109,9 +114,15 @@ async def probe_versions() -> dict[str, Any]:
         "options": {"page": 1, "take": 1},
     }
     headers = _request_headers()
+    is_mock = "stoplight.io" in BASE_URL.lower()
     async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as cx:
         for v in ("v1", "v2", "v3"):
-            url = f"{BASE_URL}/api/{v}/property/search"
+            # Stoplight mocks use bare paths from the OpenAPI spec; only
+            # production prefixes /api/<v>/.
+            if is_mock:
+                url = f"{BASE_URL}/property/search" if v == "v1" else f"{BASE_URL}/{v}/property/search"
+            else:
+                url = f"{BASE_URL}/api/{v}/property/search"
             try:
                 r = await cx.post(url, json=body, headers=headers)
                 out[v] = {"status": r.status_code, "url": url}
@@ -185,12 +196,30 @@ async def search(
                 )
                 return []
             data = r.json()
-            return (
-                data.get("results")
-                or data.get("properties")
-                or data.get("data")
-                or []
-            )
+            return _extract_properties(data)
     except Exception as exc:
         log.warning("BatchData search failed: %s", exc)
         return []
+
+
+def _extract_properties(data: Any) -> list[dict]:
+    """Pull the property records out of a BatchData / Stoplight-mock
+    response. Three known shapes:
+      { results: { properties: [...] } }   (mock + production current)
+      { properties: [...] }                  (legacy)
+      { results: [...] }                      (rare flat shape)
+    """
+    if not isinstance(data, dict):
+        return []
+    results = data.get("results")
+    if isinstance(results, dict):
+        out = results.get("properties") or results.get("data") or []
+        if isinstance(out, list):
+            return out
+    if isinstance(results, list):
+        return results
+    if isinstance(data.get("properties"), list):
+        return data["properties"]
+    if isinstance(data.get("data"), list):
+        return data["data"]
+    return []
